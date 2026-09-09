@@ -7,6 +7,12 @@ const password = z
   .regex(/[A-Za-z]/, 'Include at least one letter.')
   .regex(/[0-9]/, 'Include at least one number.');
 
+export const E164_PHONE_PATTERN = /^\+[1-9][0-9]{7,14}$/;
+
+// HTML `pattern` is a source string, not a JavaScript string literal. A character
+// class keeps the leading plus literal without relying on double escaping.
+export const E164_PHONE_INPUT_PATTERN = '[+][1-9][0-9]{7,14}';
+
 export const signInSchema = z.object({ email, password });
 
 export const signUpSchema = z.object({
@@ -14,10 +20,7 @@ export const signUpSchema = z.object({
   password,
   whatsappNumber: z
     .string()
-    .regex(
-      /^\+[1-9][0-9]{7,14}$/,
-      'Use international format, for example +27821234567.',
-    ),
+    .regex(E164_PHONE_PATTERN, 'Use international format, for example +27821234567.'),
   isAdult: z.literal('on', { error: 'Confirm that you are 18 or older.' }),
   acceptsTerms: z.literal('on', { error: 'Accept the Terms to continue.' }),
   acceptsPrivacy: z.literal('on', { error: 'Accept the Privacy Policy to continue.' }),

@@ -1,8 +1,7 @@
 import type { SupabaseClient, User } from '@supabase/supabase-js';
 
+import { E164_PHONE_PATTERN } from '@/features/creators/auth-schema';
 import type { Database } from '@/lib/supabase/database.types';
-
-const E164_PATTERN = /^\+[1-9][0-9]{7,14}$/;
 
 function optionalConsentTimestamp(value: unknown, now: string) {
   return value === true ? now : null;
@@ -16,7 +15,7 @@ export async function provisionPrivateCreatorProfile(
   const metadata = user.user_metadata;
   const whatsappNumber =
     typeof metadata.whatsapp_number === 'string' &&
-    E164_PATTERN.test(metadata.whatsapp_number)
+    E164_PHONE_PATTERN.test(metadata.whatsapp_number)
       ? metadata.whatsapp_number
       : null;
 

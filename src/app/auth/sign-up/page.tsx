@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { E164_PHONE_INPUT_PATTERN } from '@/features/creators/auth-schema';
 
 type SignUpPageProps = {
   searchParams: Promise<{ error?: string; message?: string }>;
@@ -43,11 +44,14 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
             inputMode="tel"
             autoComplete="tel"
             placeholder="+27821234567"
-            pattern="^\\+[1-9][0-9]{7,14}$"
+            pattern={E164_PHONE_INPUT_PATTERN}
+            maxLength={16}
+            title="Use international format, for example +27821234567."
             required
           />
           <p className="field-help">
-            Use international format. Verification comes later.
+            Use international format without spaces, for example +27821234567.
+            Verification comes later.
           </p>
         </div>
         <div className="field-stack">
