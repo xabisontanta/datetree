@@ -48,7 +48,7 @@ export async function signIn(formData: FormData) {
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.signInWithPassword(parsed.data);
+  const { data, error } = await supabase.auth.signInWithPassword(parsed.data);
 
   if (error) {
     redirect(
@@ -56,6 +56,21 @@ export async function signIn(formData: FormData) {
         '/auth/sign-in',
         'error',
         'We could not sign you in with those details.',
+      ),
+    );
+  }
+
+  const { error: profileError } = await provisionPrivateCreatorProfile(
+    supabase,
+    data.user,
+  );
+
+  if (profileError) {
+    redirect(
+      authPath(
+        '/auth/sign-in',
+        'error',
+        'We signed you in, but could not prepare your profile. Please try again.',
       ),
     );
   }
