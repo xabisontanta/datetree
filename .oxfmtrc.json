@@ -1,0 +1,12 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "singleQuote": true,
+  "printWidth": 88,
+  "sortPackageJson": false,
+  "ignorePatterns": [
+    "**/*.md",
+    "package-lock.json",
+    "supabase/migrations/*.sql",
+    "supabase/tests/*.sql"
+  ]
+}
