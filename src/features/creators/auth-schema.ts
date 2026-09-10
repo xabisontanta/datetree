@@ -1,11 +1,16 @@
 import { z } from 'zod';
 
-const email = z.email('Enter a valid email address.');
-const password = z
+const email = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .pipe(z.email('Enter a valid email address.'));
+const newPassword = z
   .string()
   .min(10, 'Use at least 10 characters.')
   .regex(/[A-Za-z]/, 'Include at least one letter.')
   .regex(/[0-9]/, 'Include at least one number.');
+const currentPassword = z.string().min(1, 'Enter your password.');
 
 export const E164_PHONE_PATTERN = /^\+[1-9][0-9]{7,14}$/;
 
@@ -13,11 +18,11 @@ export const E164_PHONE_PATTERN = /^\+[1-9][0-9]{7,14}$/;
 // class keeps the leading plus literal without relying on double escaping.
 export const E164_PHONE_INPUT_PATTERN = '[+][1-9][0-9]{7,14}';
 
-export const signInSchema = z.object({ email, password });
+export const signInSchema = z.object({ email, password: currentPassword });
 
 export const signUpSchema = z.object({
   email,
-  password,
+  password: newPassword,
   whatsappNumber: z
     .string()
     .regex(E164_PHONE_PATTERN, 'Use international format, for example +27821234567.'),
@@ -28,3 +33,15 @@ export const signUpSchema = z.object({
     error: 'Consent to WhatsApp booking notifications is required.',
   }),
 });
+
+export const requestPasswordResetSchema = z.object({ email });
+
+export const updatePasswordSchema = z
+  .object({
+    password: newPassword,
+    passwordConfirmation: z.string(),
+  })
+  .refine(({ password, passwordConfirmation }) => password === passwordConfirmation, {
+    message: 'Passwords do not match.',
+    path: ['passwordConfirmation'],
+  });

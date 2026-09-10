@@ -1,27 +1,29 @@
 import Link from 'next/link';
 
-import { signIn } from '@/app/auth/actions';
+import { requestPasswordReset } from '@/app/auth/actions';
 import { AuthMessage } from '@/components/auth/auth-message';
 import { AuthShell } from '@/components/auth/auth-shell';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
-type SignInPageProps = {
+type ForgotPasswordPageProps = {
   searchParams: Promise<{ error?: string; message?: string }>;
 };
 
-export default async function SignInPage({ searchParams }: SignInPageProps) {
+export default async function ForgotPasswordPage({
+  searchParams,
+}: ForgotPasswordPageProps) {
   const { error, message } = await searchParams;
 
   return (
     <AuthShell
-      eyebrow="Creator access"
-      title="Welcome back."
-      description="Sign in to manage your page. Your private details stay private."
+      eyebrow="Account recovery"
+      title="Reset your password."
+      description="We will email a secure link to the address on your account."
     >
       <AuthMessage error={error} message={message} />
-      <form className="auth-form" action={signIn}>
+      <form className="auth-form" action={requestPasswordReset}>
         <div className="field-stack">
           <Label htmlFor="email">Email address</Label>
           <Input
@@ -33,26 +35,12 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
             required
           />
         </div>
-        <div className="field-stack">
-          <Label htmlFor="password">Password</Label>
-          <Input
-            id="password"
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            placeholder="Your password"
-            required
-          />
-        </div>
-        <p className="auth-field-link">
-          <Link href="/auth/forgot-password">Forgot password?</Link>
-        </p>
         <Button type="submit" size="lg" className="w-full">
-          Sign in
+          Send reset link
         </Button>
       </form>
       <p className="auth-switch">
-        New here? <Link href="/auth/sign-up">Create your link</Link>
+        Remembered it? <Link href="/auth/sign-in">Return to sign in</Link>
       </p>
     </AuthShell>
   );

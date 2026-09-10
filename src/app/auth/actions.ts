@@ -2,7 +2,19 @@
 
 import { redirect } from 'next/navigation';
 
-import { signInSchema, signUpSchema } from '@/features/creators/auth-schema';
+import {
+  authFailureDetails,
+  resetPasswordFailureMessage,
+  signInFailureMessage,
+  signUpFailureMessage,
+  updatePasswordFailureMessage,
+} from '@/features/creators/auth-errors';
+import {
+  requestPasswordResetSchema,
+  signInSchema,
+  signUpSchema,
+  updatePasswordSchema,
+} from '@/features/creators/auth-schema';
 import { provisionPrivateCreatorProfile } from '@/features/creators/provision-private-profile';
 import { hasSupabasePublicConfig } from '@/lib/supabase/config';
 import { createClient } from '@/lib/supabase/server';
@@ -23,6 +35,13 @@ function getAppOrigin() {
   } catch {
     return 'http://localhost:3000';
   }
+}
+
+function logAuthFailure(operation: string, error: { code?: string; status?: number }) {
+  console.error('Authentication operation failed.', {
+    operation,
+    ...authFailureDetails(error),
+  });
 }
 
 export async function signIn(formData: FormData) {
@@ -51,13 +70,8 @@ export async function signIn(formData: FormData) {
   const { data, error } = await supabase.auth.signInWithPassword(parsed.data);
 
   if (error) {
-    redirect(
-      authPath(
-        '/auth/sign-in',
-        'error',
-        'We could not sign you in with those details.',
-      ),
-    );
+    logAuthFailure('sign_in', error);
+    redirect(authPath('/auth/sign-in', 'error', signInFailureMessage(error)));
   }
 
   const { error: profileError } = await provisionPrivateCreatorProfile(
@@ -123,13 +137,8 @@ export async function signUp(formData: FormData) {
   });
 
   if (error) {
-    redirect(
-      authPath(
-        '/auth/sign-up',
-        'error',
-        'We could not create your account. Please try again.',
-      ),
-    );
+    logAuthFailure('sign_up', error);
+    redirect(authPath('/auth/sign-up', 'error', signUpFailureMessage(error)));
   }
 
   if (data.session && data.user) {
@@ -155,7 +164,117 @@ export async function signUp(formData: FormData) {
     authPath(
       '/auth/sign-in',
       'message',
-      'Check your email to confirm your account, then sign in.',
+      'Check your email to finish signup. If no email arrives, sign in or reset your password.',
+    ),
+  );
+}
+
+export async function requestPasswordReset(formData: FormData) {
+  const parsed = requestPasswordResetSchema.safeParse({
+    email: formData.get('email'),
+  });
+
+  if (!parsed.success) {
+    redirect(
+      authPath(
+        '/auth/forgot-password',
+        'error',
+        firstIssueMessage(parsed.error.issues),
+      ),
+    );
+  }
+
+  if (!hasSupabasePublicConfig()) {
+    redirect(
+      authPath(
+        '/auth/forgot-password',
+        'error',
+        'Password recovery is not configured in this environment.',
+      ),
+    );
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.resetPasswordForEmail(parsed.data.email, {
+    redirectTo: `${getAppOrigin()}/auth/callback?next=/auth/update-password`,
+  });
+
+  if (error) {
+    logAuthFailure('request_password_reset', error);
+    redirect(
+      authPath('/auth/forgot-password', 'error', resetPasswordFailureMessage(error)),
+    );
+  }
+
+  redirect(
+    authPath(
+      '/auth/forgot-password',
+      'message',
+      'If an account exists for that email, a password reset link is on its way.',
+    ),
+  );
+}
+
+export async function updatePassword(formData: FormData) {
+  const parsed = updatePasswordSchema.safeParse({
+    password: formData.get('password'),
+    passwordConfirmation: formData.get('passwordConfirmation'),
+  });
+
+  if (!parsed.success) {
+    redirect(
+      authPath(
+        '/auth/update-password',
+        'error',
+        firstIssueMessage(parsed.error.issues),
+      ),
+    );
+  }
+
+  if (!hasSupabasePublicConfig()) {
+    redirect(
+      authPath(
+        '/auth/update-password',
+        'error',
+        'Password recovery is not configured in this environment.',
+      ),
+    );
+  }
+
+  const supabase = await createClient();
+  const { data, error: userError } = await supabase.auth.getUser();
+
+  if (userError || !data.user) {
+    if (userError) logAuthFailure('verify_password_reset_session', userError);
+    redirect(
+      authPath(
+        '/auth/forgot-password',
+        'error',
+        'Your reset link is invalid or expired. Request a new one.',
+      ),
+    );
+  }
+
+  const { error } = await supabase.auth.updateUser({
+    password: parsed.data.password,
+  });
+
+  if (error) {
+    logAuthFailure('update_password', error);
+    redirect(
+      authPath('/auth/update-password', 'error', updatePasswordFailureMessage(error)),
+    );
+  }
+
+  const { error: signOutError } = await supabase.auth.signOut({ scope: 'global' });
+
+  if (signOutError) logAuthFailure('sign_out_after_password_update', signOutError);
+
+  redirect(
+    authPath(
+      '/auth/sign-in',
+      'message',
+      'Password updated. Sign in with your new password.',
     ),
   );
 }
@@ -163,7 +282,8 @@ export async function signUp(formData: FormData) {
 export async function signOut() {
   if (hasSupabasePublicConfig()) {
     const supabase = await createClient();
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
+    if (error) logAuthFailure('sign_out', error);
   }
 
   redirect('/');

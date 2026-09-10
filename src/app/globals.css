@@ -857,6 +857,17 @@ input {
   font-weight: 800;
 }
 
+.auth-field-link {
+  margin: -0.35rem 0 0;
+  font-size: 0.8rem;
+  text-align: right;
+}
+
+.auth-field-link a {
+  color: var(--foreground);
+  font-weight: 700;
+}
+
 .dashboard-page {
   width: min(calc(100% - 2rem), var(--max-width));
   margin-inline: auto;
