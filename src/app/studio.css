@@ -16,6 +16,9 @@
   gap: 14px;
   align-items: end;
 }
+.dt-row.dt-align-top {
+  align-items: start;
+}
 .dt-row > * {
   flex: 1 1 140px;
   min-width: 0;
@@ -187,6 +190,56 @@
 .dt-field input:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+.dt-calendar {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 16px;
+  background: #ffffff05;
+}
+.dt-calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.dt-calendar-header strong {
+  text-align: center;
+}
+.dt-calendar-weekdays,
+.dt-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+.dt-calendar-weekdays {
+  margin: 16px 0 8px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  text-align: center;
+}
+.dt-calendar-day,
+.dt-calendar-blank {
+  min-width: 0;
+  min-height: 42px;
+  border-radius: 10px;
+}
+.dt-calendar-day {
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  font-weight: 650;
+}
+.dt-calendar-day:not(:disabled):hover,
+.dt-calendar-day[aria-pressed='true'] {
+  border-color: var(--mint);
+  background: color-mix(in srgb, var(--mint) 15%, transparent);
+}
+.dt-calendar-day:disabled {
+  color: var(--muted-foreground);
+  opacity: 0.48;
+  cursor: not-allowed;
+  text-decoration: line-through 2px;
 }
 .dt-toggle {
   display: flex;

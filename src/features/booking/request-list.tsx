@@ -152,20 +152,19 @@ export function RequestList({
                 <p className="dt-pre-wrap">{details[r.id]}</p>
               </div>
             )}
-            {r.snapshot.pricing === 'fixed' &&
-              ['PENDING_CREATOR', 'COUNTER_PROPOSED'].includes(r.status) && (
-                <small>
-                  Paid acceptance is not available until payment processing is
-                  connected. Nothing has been charged.
-                </small>
-              )}
+            {r.snapshot.pricing === 'fixed' && (
+              <small>
+                Date Tree has not collected this payment. Arrange payment directly with
+                the client until online payments are connected.
+              </small>
+            )}
             <div className="dt-actions">
               {creator && r.status === 'PENDING_CREATOR' && (
                 <Button
                   variant="ghost"
                   type="button"
                   className="dt-button"
-                  disabled={busy || r.snapshot.pricing === 'fixed'}
+                  disabled={busy}
                   onClick={() => act(r, 'accept')}
                 >
                   Accept request
@@ -204,7 +203,7 @@ export function RequestList({
                   variant="ghost"
                   type="button"
                   className="dt-button"
-                  disabled={busy || r.snapshot.pricing === 'fixed'}
+                  disabled={busy}
                   onClick={() => act(r, 'accept_counter')}
                 >
                   Accept proposed time

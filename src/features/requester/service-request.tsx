@@ -159,21 +159,28 @@ export function ServiceRequest({
                   const idempotencyKey = key || crypto.randomUUID();
                   setKey(idempotencyKey);
                   startTransition(async () => {
-                    const result = await submitRequest({
-                      serviceId: service.id,
-                      serviceSnapshot: service,
-                      idempotencyKey,
-                      name,
-                      notes,
-                      answers: service.questions.map((_, i) => answers[i] ?? ''),
-                      start,
-                      preferredDate: date,
-                      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                      adult,
-                      consent,
-                    });
-                    setError(result.error);
-                    if (result.id) setReceipt(result.id);
+                    setError('');
+                    try {
+                      const result = await submitRequest({
+                        serviceId: service.id,
+                        serviceSnapshot: service,
+                        idempotencyKey,
+                        name,
+                        notes,
+                        answers: service.questions.map((_, i) => answers[i] ?? ''),
+                        start,
+                        preferredDate: date,
+                        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                        adult,
+                        consent,
+                      });
+                      setError(result.error);
+                      if (result.id) setReceipt(result.id);
+                    } catch {
+                      setError(
+                        'The request could not reach Date Tree. Your details are still here—please try again.',
+                      );
+                    }
                   });
                 }}
               >
@@ -314,9 +321,8 @@ export function ServiceRequest({
                 )}
                 {service.pricing === 'fixed' && (
                   <p className="dt-notice">
-                    Payment processing is not connected yet. This request cannot be
-                    accepted as a paid booking until it is available. You will not be
-                    charged now.
+                    Date Tree will not charge you. The creator may arrange payment with
+                    you directly until online payments are connected.
                   </p>
                 )}
                 <Button

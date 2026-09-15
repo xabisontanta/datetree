@@ -1,9 +1,13 @@
 'use client';
 import { Button } from '@/components/ui/button';
 
-import { useEffect, useState } from 'react';
-import { Field, Notice } from '@/components/editor-fields';
+import { useEffect, useMemo, useState } from 'react';
+import { Notice } from '@/components/editor-fields';
+import { localDateKey, monthCells, shiftMonth } from './calendar';
+
 type Slot = { start: string; end: string };
+const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
 export function SlotPicker({
   serviceId,
   selected,
@@ -15,24 +19,67 @@ export function SlotPicker({
 }) {
   const [date, setDate] = useState('');
   const [zone, setZone] = useState('UTC');
+  const [month, setMonth] = useState('');
+  const [today, setToday] = useState('');
+  const [available, setAvailable] = useState<string[]>([]);
   const [slots, setSlots] = useState<Slot[]>([]);
+  const [loadingDates, setLoadingDates] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
   useEffect(() => {
-    setZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
-    setDate(new Date().toLocaleDateString('en-CA'));
+    const visitorZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const current = localDateKey(new Date(), visitorZone);
+    setZone(visitorZone);
+    setToday(current);
+    setMonth(current.slice(0, 7));
   }, []);
+
   useEffect(() => {
-    if (!date) return;
+    if (!month) return;
+    const abort = new AbortController();
+    setLoadingDates(true);
+    setError('');
+    fetch(`/api/availability?service=${serviceId}&month=${month}`, {
+      signal: abort.signal,
+      cache: 'no-store',
+    })
+      .then(async (response) => {
+        const data = (await response.json()) as { dates?: string[]; error?: string };
+        if (!response.ok)
+          throw new Error(data.error || 'Available dates could not be loaded.');
+        setAvailable(data.dates ?? []);
+        if (date && !(data.dates ?? []).includes(date)) {
+          setDate('');
+          onChange('');
+        }
+      })
+      .catch((reason) => {
+        if (!abort.signal.aborted)
+          setError(
+            reason instanceof Error
+              ? reason.message
+              : 'Could not load available dates.',
+          );
+      })
+      .finally(() => {
+        if (!abort.signal.aborted) setLoadingDates(false);
+      });
+    return () => abort.abort();
+  }, [date, month, onChange, serviceId]);
+
+  useEffect(() => {
+    if (!date) {
+      setSlots([]);
+      return;
+    }
     const abort = new AbortController();
     setLoading(true);
     setError('');
     setSlots([]);
-    // A visitor's calendar date can straddle two UTC dates. Fetch surrounding
-    // UTC days, then filter using the visitor's named timezone.
     const base = new Date(`${date}T12:00:00Z`);
     const dates = [-1, 0, 1].map((n) =>
-      new Date(base.getTime() + n * 86400000).toISOString().slice(0, 10),
+      new Date(base.getTime() + n * 86_400_000).toISOString().slice(0, 10),
     );
     Promise.all(
       dates.map(async (day) => {
@@ -47,65 +94,123 @@ export function SlotPicker({
       }),
     )
       .then((groups) => {
-        const format = new Intl.DateTimeFormat('en-CA', {
-          timeZone: zone,
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-        });
         const unique = new Map(
           groups
             .flat()
-            .filter((s) => format.format(new Date(s.start)) === date)
-            .map((s) => [s.start, s]),
+            .filter((slot) => localDateKey(new Date(slot.start), zone) === date)
+            .map((slot) => [slot.start, slot]),
         );
         setSlots([...unique.values()].sort((a, b) => a.start.localeCompare(b.start)));
       })
-      .catch((e) => {
+      .catch((reason) => {
         if (!abort.signal.aborted)
-          setError(e instanceof Error ? e.message : 'Could not load times.');
+          setError(
+            reason instanceof Error
+              ? reason.message
+              : 'Could not load available times.',
+          );
       })
       .finally(() => {
         if (!abort.signal.aborted) setLoading(false);
       });
     return () => abort.abort();
   }, [date, serviceId, zone]);
+
+  const availableSet = useMemo(() => new Set(available), [available]);
+  const cells = useMemo(() => (month ? monthCells(month) : []), [month]);
+  const monthTitle = month
+    ? new Intl.DateTimeFormat('en', {
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'UTC',
+      }).format(new Date(`${month}-01T12:00:00Z`))
+    : '';
+  const lastMonth = today
+    ? localDateKey(new Date(Date.now() + 90 * 86_400_000), zone).slice(0, 7)
+    : month;
+
   return (
     <div className="dt-stack">
-      <Field
-        label="Choose a date"
-        type="date"
-        value={date}
-        min={new Date().toLocaleDateString('en-CA')}
-        max={new Date(Date.now() + 90 * 86400000).toLocaleDateString('en-CA')}
-        onChange={(e) => {
-          setDate(e.target.value);
-          onChange('');
-        }}
-      />
-      <small>
-        Times shown in {zone}. Availability may change until your request is accepted.
-      </small>
-      {loading && <output>Finding available times…</output>}
-      {error && <Notice error>{error}</Notice>}
-      {!loading && !error && date && !slots.length && (
-        <p className="dt-empty">No times available on this date. Try another day.</p>
-      )}
-      <div className="dt-slot-grid">
-        {slots.map((s) => (
+      <div className="dt-calendar" aria-label="Choose an available date">
+        <div className="dt-calendar-header">
           <Button
             variant="ghost"
-            key={s.start}
             type="button"
-            aria-pressed={selected === s.start}
-            onClick={() => onChange(s.start)}
+            aria-label="Previous month"
+            disabled={!month || month <= today.slice(0, 7)}
+            onClick={() => setMonth(shiftMonth(month, -1))}
+          >
+            ←
+          </Button>
+          <strong>{monthTitle}</strong>
+          <Button
+            variant="ghost"
+            type="button"
+            aria-label="Next month"
+            disabled={!month || month >= lastMonth}
+            onClick={() => setMonth(shiftMonth(month, 1))}
+          >
+            →
+          </Button>
+        </div>
+        <div className="dt-calendar-weekdays" aria-hidden="true">
+          {weekdays.map((day) => (
+            <span key={day}>{day}</span>
+          ))}
+        </div>
+        <div className="dt-calendar-grid">
+          {cells.map((value, index) =>
+            value ? (
+              <button
+                key={value}
+                type="button"
+                className="dt-calendar-day"
+                disabled={loadingDates || !availableSet.has(value)}
+                aria-pressed={date === value}
+                aria-label={`${value}${availableSet.has(value) ? ', available' : ', unavailable'}`}
+                onClick={() => {
+                  setDate(value);
+                  onChange('');
+                }}
+              >
+                {Number(value.slice(-2))}
+              </button>
+            ) : (
+              <span className="dt-calendar-blank" key={`blank-${index}`} />
+            ),
+          )}
+        </div>
+      </div>
+      <small>
+        Available dates are selectable. Crossed-out dates cannot be requested. Times are
+        shown in {zone}.
+      </small>
+      {loadingDates && <output>Finding available dates…</output>}
+      {loading && <output>Finding available times…</output>}
+      {error && <Notice error>{error}</Notice>}
+      {!loadingDates && !error && !available.length && (
+        <p className="dt-empty">
+          No dates available in this month. Try the next month.
+        </p>
+      )}
+      {!loading && !error && date && !slots.length && (
+        <p className="dt-empty">That date just became unavailable. Choose another.</p>
+      )}
+      <div className="dt-slot-grid">
+        {slots.map((slot) => (
+          <Button
+            variant="ghost"
+            key={slot.start}
+            type="button"
+            aria-pressed={selected === slot.start}
+            onClick={() => onChange(slot.start)}
           >
             {new Intl.DateTimeFormat('en', {
               hour: '2-digit',
               minute: '2-digit',
               timeZone: zone,
               timeZoneName: 'shortOffset',
-            }).format(new Date(s.start))}
+            }).format(new Date(slot.start))}
           </Button>
         ))}
       </div>

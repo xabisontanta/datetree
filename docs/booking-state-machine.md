@@ -26,7 +26,9 @@ Status is changed only through named domain transition functions. Direct assignm
 1. Consent precedes payment and confirmation.
 2. `PENDING_CREATOR` and `COUNTER_PROPOSED` do not reserve a slot.
 3. Creator acceptance reserves a slot; requester acceptance of a creator counter-offer reserves the countered slot.
-4. Paid acceptance enters `ACCEPTED_AWAITING_PAYMENT`; free acceptance enters `CONFIRMED`.
+4. Provider-collected paid acceptance enters `ACCEPTED_AWAITING_PAYMENT`; while the
+   provider is not connected, a clearly disclosed manual-payment request may enter
+   `CONFIRMED` and Date Tree must never represent it as paid.
 5. Only verified server-side payment evidence can move a paid booking to `CONFIRMED`.
 6. Accepted/confirmed reservations cannot overlap for the same creator.
 7. Payment expiry releases the reservation.
@@ -39,6 +41,7 @@ Status is changed only through named domain transition functions. Direct assignm
 | --- | --- | --- | --- |
 | `DRAFT` | `createBookingRequest` / requester | `PENDING_CREATOR` | Valid experience, requester data, screening answers, safe slot; no block |
 | `PENDING_CREATOR` | `acceptBooking` / owning creator | `ACCEPTED_AWAITING_PAYMENT` | Paid experience; slot rechecked and reserved atomically |
+| `PENDING_CREATOR` | `acceptBooking` / owning creator | `CONFIRMED` | Manual-payment mode; slot rechecked, Date Tree records no payment |
 | `PENDING_CREATOR` | `acceptBooking` / owning creator | `CONFIRMED` | Free experience; slot rechecked and reserved atomically |
 | `PENDING_CREATOR` | `declineBooking` / owning creator | `DECLINED` | Optional safe reason policy |
 | `PENDING_CREATOR` | `counterBooking` / owning creator | `COUNTER_PROPOSED` | Proposed slot valid; not yet reserved |

@@ -39,6 +39,17 @@ export async function submitRequest(input: unknown) {
   const { data } = await db.auth.getUser();
   if (!data.user?.email_confirmed_at)
     return { error: 'Verify your email before submitting.', id: '' };
+  const { data: service } = await db
+    .from('dt_services')
+    .select('creator_id')
+    .eq('id', parsed.data.serviceId)
+    .maybeSingle();
+  if (service?.creator_id === data.user.id)
+    return {
+      error:
+        'You cannot request your own service while signed in as its creator. Use another verified email in a private window to test it.',
+      id: '',
+    };
   const { data: id, error } = await db.rpc('dt_submit_request', {
     payload: parsed.data as Json,
   });

@@ -36,8 +36,10 @@ Named IANA zones convert to UTC. Windows may span midnight; an override cuts off
 previous-day spillover. DST boundary gaps omit that window; ambiguous boundaries
 use PostgreSQL's standard-time interpretation, with UTC slots displayed by offset.
 Buffers apply on both sides of each appointment. Notice and horizon are rechecked.
-Pending/countered requests do not reserve time. Acceptance locks the creator row and
-the database exclusion constraint prevents overlapping reservations across services.
+Pending/countered requests do not reserve time. An accepted appointment blocks the
+creator's whole local calendar day; unavailable dates are returned without a reason or
+client data. Acceptance locks the creator row and the database constraint prevents
+conflicting reservations across services.
 Scheduled, deliverable and enquiry acceptance use canonical `CONFIRMED`, with
 type-specific UI labels. Free work can be cancelled by either party before completion;
 creators mark completion, and appointments must have ended. Counters require requester
@@ -45,9 +47,10 @@ acceptance. State changes are audited; notification intent is persisted separate
 
 ## Explicit limitations
 
-Payment processing and status notifications are not connected. Paid requests can be
-submitted, but cannot be accepted/charged; no payment reservation is created. There
-is no fake payment or notification success. The inbox is the source of status.
+Payment processing and status notifications are not connected. Fixed-price requests
+can be accepted, but payment must be arranged directly and Date Tree never represents
+it as collected. There is no fake payment or notification success. The inbox is the
+source of status.
 Auth email delivery still depends on the shared project's SMTP limits and redirect
 configuration. Do not alter unrelated Zap application tables or global auth policies.
 Group sessions, external calendar sync, payouts, subscriptions and custom domains are

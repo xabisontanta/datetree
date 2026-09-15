@@ -15,7 +15,7 @@ export function ProfileEditor({
 }) {
   return (
     <div className="dt-stack">
-      <div className="dt-row">
+      <div className="dt-row dt-align-top">
         <Field
           label="Display name"
           value={p.displayName}

@@ -4,6 +4,10 @@ const sql = readFileSync(
   'supabase/migrations/20260914132005_service_pages_and_requests.sql',
   'utf8',
 );
+const bookingFixSql = readFileSync(
+  'supabase/migrations/20260915151736_improve_booking_calendar_and_manual_payments.sql',
+  'utf8',
+);
 describe('service-page migration contracts', () => {
   it('enforces overlap with a database exclusion constraint', () => {
     expect(sql).toContain('exclude using gist');
@@ -38,5 +42,18 @@ describe('service-page migration contracts', () => {
     const exposed = sql.match(/create function public\.[\s\S]+?\$\$;/g) ?? [];
     expect(exposed.length).toBeGreaterThan(4);
     for (const fn of exposed) expect(fn).toContain('security invoker');
+  });
+  it('publishes only bookable dates and blocks an accepted local day', () => {
+    expect(bookingFixSql).toContain('create function public.dt_available_dates');
+    expect(bookingFixSql).toContain(
+      '(r.start_at at time zone tz)::date=(t at time zone tz)::date',
+    );
+    expect(bookingFixSql).toContain(
+      'revoke all on function dt_private.available_dates(uuid,date)',
+    );
+  });
+  it('allows fixed-price acceptance without claiming payment was collected', () => {
+    expect(bookingFixSql).not.toContain('Paid requests cannot be accepted yet.');
+    expect(bookingFixSql).toContain("target:='CONFIRMED'");
   });
 });

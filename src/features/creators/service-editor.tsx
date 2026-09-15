@@ -1,5 +1,6 @@
 'use client';
 import { Button } from '@/components/ui/button';
+import { useState } from 'react';
 
 import { Field, Select, TextArea, Toggle } from '@/components/editor-fields';
 import { ImageUpload } from './image-upload';
@@ -20,6 +21,9 @@ export function ServiceEditor({
   services: Service[];
   onChange: (services: Service[]) => void;
 }) {
+  const [removed, setRemoved] = useState<{ service: Service; index: number } | null>(
+    null,
+  );
   function patch(index: number, value: Partial<Service>) {
     onChange(services.map((s, i) => (i === index ? { ...s, ...value } : s)));
   }
@@ -27,6 +31,17 @@ export function ServiceEditor({
     const next = [...services];
     [next[index], next[index + direction]] = [next[index + direction]!, next[index]!];
     onChange(next);
+  }
+  function remove(index: number) {
+    setRemoved({ service: services[index]!, index });
+    onChange(services.filter((_, i) => i !== index));
+  }
+  function undoRemove() {
+    if (!removed) return;
+    const next = [...services];
+    next.splice(Math.min(removed.index, next.length), 0, removed.service);
+    onChange(next);
+    setRemoved(null);
   }
   return (
     <div className="dt-stack">
@@ -69,6 +84,19 @@ export function ServiceEditor({
       {!services.length && (
         <div className="dt-empty">
           Choose a starting point above. You can edit every detail.
+        </div>
+      )}
+      {removed && (
+        <div className="dt-notice dt-between" aria-live="polite">
+          <span>{removed.service.title || 'Service'} removed from this draft.</span>
+          <Button
+            variant="ghost"
+            type="button"
+            className="dt-text-button"
+            onClick={undoRemove}
+          >
+            Undo
+          </Button>
         </div>
       )}
       {services.map((s, i) => (
@@ -156,9 +184,8 @@ export function ServiceEditor({
             </div>
             {s.pricing === 'fixed' && (
               <p className="dt-notice">
-                You can showcase prices and receive requests. Paid acceptance is
-                unavailable until the payment provider is connected. No payment is
-                collected here.
+                You can show prices and accept requests. Date Tree does not collect the
+                payment yet, so arrange it directly with your client.
               </p>
             )}
             {s.kind === 'scheduled' && (
@@ -334,10 +361,19 @@ export function ServiceEditor({
               >
                 ↓ Down
               </Button>
+              <Button
+                variant="ghost"
+                type="button"
+                className="dt-text-button"
+                onClick={() => remove(i)}
+                aria-label={`Remove ${s.title || 'service'}`}
+              >
+                Remove service
+              </Button>
             </div>
             <small>
-              Archiving hides the service after you publish changes. Existing requests
-              remain in your inbox.
+              Archiving hides the service temporarily. Removing deletes it from your
+              page after you save and publish; existing requests remain in your inbox.
             </small>
           </div>
         </details>
