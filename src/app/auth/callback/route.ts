@@ -15,7 +15,9 @@ const otpTypes = new Set<EmailOtpType>([
 ]);
 
 function safeNextPath(value: string | null) {
-  return value?.startsWith('/') && !value.startsWith('//') ? value : '/dashboard';
+  return value?.startsWith('/') && !value.startsWith('//') && !value.includes('\\')
+    ? value
+    : '/dashboard';
 }
 
 export async function GET(request: Request) {

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { DM_Serif_Display, Manrope } from 'next/font/google';
 
 import './globals.css';
+import './studio.css';
 
 const manrope = Manrope({
   variable: '--font-manrope',
@@ -16,14 +17,15 @@ const dmSerif = DM_Serif_Display({
 
 export const metadata: Metadata = {
   metadataBase: new URL(
-    'https://date-tree-social-booking.shady-poppy-7166.chatgpt.site',
+    process.env.NEXT_PUBLIC_APP_URL ||
+      'https://date-tree-social-booking.xabison.chatgpt.site',
   ),
   title: {
-    default: 'Date Tree — Make the plan happen',
+    default: 'Date Tree — Your services. Your link.',
     template: '%s — Date Tree',
   },
   description:
-    'Create a personal social booking link and let people request time with you, on your terms.',
+    'One personal link for your services, appointments and creative work. Build a page that feels like you.',
 };
 
 export const viewport: Viewport = {

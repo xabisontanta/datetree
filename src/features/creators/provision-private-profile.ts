@@ -32,6 +32,6 @@ export async function provisionPrivateCreatorProfile(
       ),
       updated_at: now,
     },
-    { onConflict: 'id' },
+    { onConflict: 'id', ignoreDuplicates: true },
   );
 }

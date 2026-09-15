@@ -1,5 +1,9 @@
 # Product Specification
 
+The generalized service-page phase is defined in [Service Pages](service-pages.md).
+That document supersedes dating-only onboarding and describes the implemented scope;
+the original product baseline below retains longer-term payment and notification goals.
+
 ## Status
 
 This is the initial product baseline. Update it when approved behavior changes; implementation details belong in [architecture.md](architecture.md).

@@ -16,9 +16,9 @@ import Link from 'next/link';
 import { BrandMark } from '@/components/brand-mark';
 
 const experiences = [
-  { icon: Coffee, title: 'Coffee date', meta: '60 min', price: 'R250' },
-  { icon: Video, title: 'Video call', meta: '20 min', price: 'R100' },
-  { icon: Phone, title: "Let's talk", meta: '30 min', price: 'Free' },
+  { icon: Coffee, title: 'Coaching session', meta: '60 min', price: 'R250' },
+  { icon: Video, title: 'Birthday shout-out', meta: '7-day delivery', price: 'R100' },
+  { icon: Phone, title: 'Project enquiry', meta: 'Your brief', price: 'Quote' },
 ];
 
 const steps = [
@@ -31,13 +31,13 @@ const steps = [
   {
     number: '02',
     title: 'Choose every request',
-    copy: 'People ask for your time. You accept, decline, or suggest another time.',
+    copy: 'Clients request appointments, personalised deliveries, or project quotes. You decide what works.',
     icon: CalendarCheck2,
   },
   {
     number: '03',
     title: 'Confirm the plan',
-    copy: 'Payment only happens after you accept. WhatsApp keeps everyone updated.',
+    copy: 'Manage responses in your private inbox. Requests are never confirmed without your acceptance.',
     icon: MessageCircleMore,
   },
 ];
@@ -72,8 +72,8 @@ export default function Home() {
             <span> an actual plan.</span>
           </h1>
           <p className="hero-subtitle">
-            Create your personal social booking link. Let people request a call, coffee,
-            date or conversation — on your terms.
+            One personal link for your expertise, services and creative work. For
+            coaches, businesses, influencers and anyone with something to offer.
           </p>
           <div className="hero-actions">
             <Link className="button-link button-link-primary" href="/auth/sign-up">
@@ -124,7 +124,7 @@ export default function Home() {
               <p className="profile-handle">@thando</p>
               <h2>Thando</h2>
               <p className="profile-bio">
-                Coffee, good conversations and spontaneous adventures ✨
+                Coaching, creative projects and a little birthday magic ✨
               </p>
               <div className="experience-list">
                 {experiences.map(({ icon: Icon, title, meta, price }) => (
@@ -143,7 +143,7 @@ export default function Home() {
                 ))}
               </div>
               <p className="preview-note">
-                This preview is fictional. Booking opens in a later phase.
+                Example profile. Create your own page with your services and style.
               </p>
             </div>
           </article>
@@ -205,7 +205,7 @@ export default function Home() {
 
       <footer className="site-footer">
         <BrandMark />
-        <p>Social plans, with consent built in.</p>
+        <p>Your services. Your style. Your terms.</p>
         <p>© {new Date().getUTCFullYear()} Date Tree</p>
       </footer>
     </main>

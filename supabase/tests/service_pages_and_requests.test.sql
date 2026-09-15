@@ -1,0 +1,205 @@
+-- Synthetic database-only identities, all rolled back. This does NOT test signup or email delivery.
+begin;
+create extension if not exists pgtap with schema extensions;
+set local search_path = public, extensions;
+select no_plan();
+create temporary table dt_test_results(result text);
+grant select,insert on dt_test_results to anon,authenticated;
+create function pg_temp.uid(n int) returns uuid language sql immutable as $$
+  select ('10000000-0000-4000-8000-' || lpad(n::text,12,'0'))::uuid
+$$;
+create function pg_temp.sid(n int) returns uuid language sql immutable as $$
+  select ('11000000-0000-4000-8000-' || lpad(n::text,12,'0'))::uuid
+$$;
+create function pg_temp.login(n int) returns void language sql as $$
+  select set_config('request.jwt.claims',jsonb_build_object('sub',pg_temp.uid(n),'role','authenticated','session_id',pg_temp.uid(n))::text,true)::text;
+$$;
+create function pg_temp.document() returns jsonb language sql immutable as $doc$
+  select $json${"profile":{"themeVersion":1,"username":"dt-test-coach","displayName":"Test coach","bio":"","tagline":"","avatar":"","cover":"","backgroundImage":"","avatarPosition":50,"coverPosition":50,"backgroundPosition":50,"theme":"dark","accent":"#ff6058","background":"#111020","backgroundType":"solid","gradient":"night","font":"sans","buttons":"pill","cards":"solid","scheme":"dark","links":[]},"services":[{"id":"11000000-0000-4000-8000-000000000001","kind":"scheduled","title":"Test service 0","description":"","image":"","active":true,"pricing":"free","amount":0,"currency":"ZAR","duration":30,"mode":"online","location":"","privateDetails":"Private meeting instructions","turnaround":7,"capacity":1,"instructions":"","questions":[]},{"id":"11000000-0000-4000-8000-000000000002","kind":"scheduled","title":"Test service 1","description":"","image":"","active":true,"pricing":"free","amount":0,"currency":"ZAR","duration":30,"mode":"online","location":"","privateDetails":"Private meeting instructions","turnaround":7,"capacity":1,"instructions":"","questions":[]},{"id":"11000000-0000-4000-8000-000000000003","kind":"deliverable","title":"Test service 2","description":"","image":"","active":true,"pricing":"free","amount":0,"currency":"ZAR","duration":30,"mode":"online","location":"","privateDetails":"Private meeting instructions","turnaround":7,"capacity":1,"instructions":"","questions":[]},{"id":"11000000-0000-4000-8000-000000000004","kind":"enquiry","title":"Test service 3","description":"","image":"","active":true,"pricing":"quote","amount":0,"currency":"ZAR","duration":30,"mode":"online","location":"","privateDetails":"Private meeting instructions","turnaround":7,"capacity":1,"instructions":"","questions":[]},{"id":"11000000-0000-4000-8000-000000000005","kind":"scheduled","title":"Test service 4","description":"","image":"","active":true,"pricing":"fixed","amount":2500,"currency":"ZAR","duration":30,"mode":"online","location":"","privateDetails":"Private meeting instructions","turnaround":7,"capacity":1,"instructions":"","questions":[]}],"availability":{"timezone":"UTC","windows":[{"day":0,"start":"09:00","end":"18:00"},{"day":1,"start":"09:00","end":"18:00"},{"day":2,"start":"09:00","end":"18:00"},{"day":3,"start":"09:00","end":"18:00"},{"day":4,"start":"09:00","end":"18:00"},{"day":5,"start":"09:00","end":"18:00"},{"day":6,"start":"09:00","end":"18:00"}],"exceptions":[],"notice":0,"horizon":90,"buffer":15},"step":0}$json$::jsonb
+$doc$;
+create function pg_temp.payload(service_number int, key_number int, at_time text default '10:00') returns jsonb language sql as $$
+  select jsonb_build_object('serviceId',pg_temp.sid(service_number),'idempotencyKey',('12000000-0000-4000-8000-'||lpad(key_number::text,12,'0'))::uuid,
+    'serviceSnapshot',(pg_temp.document()->'services'->(service_number-1))-'privateDetails',
+    'name','Test client','notes','A private test note','answers','[]'::jsonb,
+    'start',case when service_number in (1,2,5) then ((current_date+1)+at_time::time)::timestamp at time zone 'UTC' else null end,
+    'preferredDate','','timezone','UTC','adult',true,'consent',true)
+$$;
+insert into auth.users(id,email,email_confirmed_at,raw_user_meta_data) select pg_temp.uid(n),'dt-transaction-test-'||n||'@example.test',now(),'{}'::jsonb from generate_series(1,4) n;
+insert into auth.sessions(id,user_id,created_at,updated_at) select pg_temp.uid(n),pg_temp.uid(n),now(),now() from generate_series(1,4) n;
+insert into public.profiles_private(id,is_adult,terms_accepted_at,privacy_accepted_at) select pg_temp.uid(n),true,now(),now() from generate_series(1,4) n;
+select pg_temp.login(1);
+set local role authenticated;
+insert into dt_test_results select is(public.dt_save_page(pg_temp.document(),0),1,'owner can save a complete draft');
+insert into dt_test_results select throws_ok($$select public.dt_save_page(pg_temp.document(),0)$$,'P0001',null,'stale revision rejected');
+insert into dt_test_results select throws_ok($$select public.dt_save_page(pg_temp.document()-'profile',1)$$,'P0001',null,'direct RPC missing profile rejected');
+insert into dt_test_results select throws_ok($$select public.dt_save_page(jsonb_set(pg_temp.document(),'{profile,username}','"dashboard"'),1)$$,'P0001',null,'reserved username rejected in database');
+insert into dt_test_results select throws_ok($$select public.dt_save_page(pg_temp.document(),null)$$,'P0001',null,'null revisions do not bypass concurrency guards');
+insert into dt_test_results select throws_ok($$update public.profiles_public set is_published=true$$,'42501',null,'direct publication writes denied');
+select public.dt_publish_page(true,1);
+insert into dt_test_results select ok((select is_published from public.profiles_public where creator_id=pg_temp.uid(1)),'owner can publish');
+insert into dt_test_results select ok((select not (document ? 'availability') and document::text not like '%Private meeting instructions%' from public.profiles_public where creator_id=pg_temp.uid(1)),'published document excludes schedule and private details');
+insert into dt_test_results select throws_ok($$select public.dt_save_page(jsonb_set(pg_temp.document(),'{profile,username}','"renamed-coach"'),1)$$,'P0001',null,'published username cannot break shared links');
+reset role;
+select pg_temp.login(4);
+set local role authenticated;
+insert into dt_test_results select is((select count(*)::int from public.dt_page_drafts),0,'another creator cannot read draft');
+insert into dt_test_results select throws_ok($$select public.dt_save_page(jsonb_set(pg_temp.document(),'{services}','[]'),0)$$,'23505',null,'duplicate username rejected');
+reset role;
+set local role anon;
+insert into dt_test_results select is((select count(*)::int from public.profiles_public where username='dt-test-coach'),1,'signed-out reader sees published page');
+insert into dt_test_results select throws_ok($$select * from public.dt_requests$$,'42501',null,'anonymous requests access denied');
+insert into dt_test_results select throws_ok($$select * from public.dt_page_drafts$$,'42501',null,'anonymous drafts access denied');
+insert into dt_test_results select throws_ok($$select public.dt_submit_request(pg_temp.payload(1,1))$$,'42501',null,'anonymous request mutation denied');
+insert into dt_test_results select ok(exists(select 1 from public.dt_available_slots(pg_temp.sid(1),current_date+1) where start_at=((current_date+1)+time '10:00') at time zone 'UTC'),'anonymous availability exposes bookable slot');
+reset role;
+select pg_temp.login(2);
+set local role authenticated;
+insert into dt_test_results select throws_ok($$select public.dt_submit_request(pg_temp.payload(1,1)-'adult')$$,'P0001',null,'missing adult consent rejected');
+insert into dt_test_results select throws_ok($$select public.dt_submit_request(pg_temp.payload(1,1)-'serviceSnapshot')$$,'P0001',null,'missing terms snapshot rejected');
+insert into dt_test_results select lives_ok($$select public.dt_submit_request(pg_temp.payload(1,1))$$,'verified requester can submit');
+insert into dt_test_results select is(public.dt_submit_request(pg_temp.payload(1,1)),public.dt_submit_request(pg_temp.payload(1,1)),'repeated submit returns the same receipt');
+insert into dt_test_results select is((select count(*)::int from public.dt_requests),1,'duplicate request created once');
+insert into dt_test_results select is((select count(*)::int from public.dt_request_details()),0,'requester cannot read meeting instructions before acceptance');
+insert into dt_test_results select ok(exists(select 1 from public.dt_available_slots(pg_temp.sid(1),current_date+1) where start_at=((current_date+1)+time '10:00') at time zone 'UTC'),'pending request does not reserve slot');
+reset role;
+select pg_temp.login(3);
+set local role authenticated;
+insert into dt_test_results select is((select count(*)::int from public.dt_requests),0,'requester isolation hides another client request');
+select public.dt_submit_request(pg_temp.payload(2,2,'10:15'));
+reset role;
+select pg_temp.login(1);
+set local role authenticated;
+insert into dt_test_results select is((select count(*)::int from public.dt_requests),2,'creator sees their two client requests');
+insert into dt_test_results select lives_ok($$select public.dt_transition_request((select id from public.dt_requests where service_id=pg_temp.sid(1)),'accept',1)$$,'free appointment acceptance succeeds');
+insert into dt_test_results select lives_ok($$select public.dt_transition_request((select id from public.dt_requests where service_id=pg_temp.sid(1)),'accept',1)$$,'retrying acceptance is idempotent');
+insert into dt_test_results select throws_ok($$select public.dt_transition_request((select id from public.dt_requests where service_id=pg_temp.sid(2)),'accept',1)$$,'P0001',null,'overlap across services rejected');
+insert into dt_test_results select ok(not exists(select 1 from public.dt_available_slots(pg_temp.sid(2),current_date+1) where start_at=((current_date+1)+time '10:15') at time zone 'UTC'),'accepted booking and buffer hide conflicting slot');
+insert into dt_test_results select throws_ok($$update public.dt_requests set status='CONFIRMED'$$,'42501',null,'direct status writes denied');
+select public.dt_transition_request((select id from public.dt_requests where service_id=pg_temp.sid(2)),'counter',1,((current_date+1)+time '14:00') at time zone 'UTC');
+reset role;
+select pg_temp.login(2);
+set local role authenticated;
+insert into dt_test_results select is((select count(*)::int from public.dt_request_details()),1,'accepted requester sees their private instructions');
+select public.dt_submit_request(pg_temp.payload(3,3));
+select public.dt_submit_request(pg_temp.payload(3,4));
+select public.dt_submit_request(pg_temp.payload(4,5));
+select public.dt_submit_request(pg_temp.payload(5,6,'16:00'));
+reset role;
+select pg_temp.login(3);
+set local role authenticated;
+insert into dt_test_results select lives_ok($$select public.dt_transition_request((select id from public.dt_requests where service_id=pg_temp.sid(2)),'accept_counter',2)$$,'owning requester can accept counter proposal');
+reset role;
+select pg_temp.login(1);
+set local role authenticated;
+select public.dt_transition_request((select id from public.dt_requests where service_id=pg_temp.sid(3) order by id limit 1),'accept',1);
+insert into dt_test_results select throws_ok($$select public.dt_transition_request((select id from public.dt_requests where service_id=pg_temp.sid(3) and status='PENDING_CREATOR'),'accept',1)$$,'P0001',null,'delivery capacity enforced');
+select public.dt_transition_request((select id from public.dt_requests where service_id=pg_temp.sid(4)),'accept',1);
+insert into dt_test_results select ok((select bool_and(start_at is null and reserved_from is null) from public.dt_requests where service_id in (pg_temp.sid(3),pg_temp.sid(4))),'deliveries and enquiries never occupy appointment slots');
+insert into dt_test_results select ok(exists(select 1 from public.dt_available_slots(pg_temp.sid(1),current_date+1) where start_at=((current_date+1)+time '16:00') at time zone 'UTC'),'accepted delivery does not hide appointment availability');
+insert into dt_test_results select throws_ok($$select public.dt_transition_request((select id from public.dt_requests where service_id=pg_temp.sid(5)),'accept',1)$$,'P0001',null,'paid acceptance gated without a provider');
+select public.dt_save_page(jsonb_set(pg_temp.document(),'{availability,windows}','[]'),1);
+insert into dt_test_results select ok(exists(select 1 from public.dt_available_slots(pg_temp.sid(1),current_date+1)),'saving availability draft does not affect live slots');
+update public.profiles_private set requests_paused_at=now() where id=pg_temp.uid(1);
+insert into dt_test_results select is((select count(*)::int from public.dt_available_slots(pg_temp.sid(1),current_date+1)),0,'paused requests expose no slots');
+reset role;
+select pg_temp.login(2);
+set local role authenticated;
+insert into dt_test_results select throws_ok($$select public.dt_submit_request(pg_temp.payload(4,7))$$,'P0001',null,'paused creator rejects enquiry too');
+reset role;
+select pg_temp.login(1);
+set local role authenticated;
+update public.profiles_private set requests_paused_at=null where id=pg_temp.uid(1);
+select public.dt_publish_page(false,2);
+reset role;
+set local role anon;
+insert into dt_test_results select is((select count(*)::int from public.profiles_public where username='dt-test-coach'),0,'unpublished profile unavailable to signed-out readers');
+insert into dt_test_results select is((select count(*)::int from public.dt_available_slots(pg_temp.sid(1),current_date+1)),0,'unpublished profile exposes no slots');
+reset role;
+select pg_temp.login(2);
+set local role authenticated;
+insert into dt_test_results select is((select count(*)::int from public.dt_request_contacts()),0,'requester cannot list creator client emails');
+reset role;
+select set_config('dt.test_request_id',(select id::text from public.dt_requests where service_id=pg_temp.sid(1)),true);
+select pg_temp.login(4);
+set local role authenticated;
+insert into dt_test_results select throws_ok($$select public.dt_transition_request(current_setting('dt.test_request_id')::uuid,'cancel',2)$$,'P0001',null,'another creator cannot change someone else request');
+insert into dt_test_results select is((select count(*)::int from public.dt_request_details()),0,'another creator cannot read private meeting details');
+reset role;
+select pg_temp.login(1);
+set local role authenticated;
+insert into dt_test_results select is((select count(*)::int from public.dt_request_contacts()),6,'owning creator can contact only consenting clients');
+insert into dt_test_results select ok((select delivery_due_at is not null and accepted_at is not null from public.dt_requests where service_id=pg_temp.sid(3) and status='CONFIRMED'),'accepted deliverable has a persisted deadline');
+select public.dt_save_page(pg_temp.document(),2);
+select public.dt_publish_page(true,3);
+-- A precise end boundary must fit the whole appointment.
+insert into dt_test_results select ok(not exists(select 1 from public.dt_available_slots(pg_temp.sid(1),current_date+1) where start_at=((current_date+1)+time '17:45') at time zone 'UTC'),'duration cannot run past the window end');
+-- Block tomorrow, including spillover from tonight's overnight window.
+select public.dt_save_page(jsonb_set(jsonb_set(pg_temp.document(),'{availability,windows}',jsonb_build_array(jsonb_build_object('day',extract(dow from current_date)::int,'start','22:00','end','04:00'))),'{availability,exceptions}',jsonb_build_array(jsonb_build_object('date',(current_date+1)::text,'windows','[]'::jsonb))),3);
+select public.dt_publish_page(true,4);
+insert into dt_test_results select is((select count(*)::int from public.dt_available_slots(pg_temp.sid(1),current_date+1)),0,'day off stops overnight spillover from the previous day');
+select public.dt_save_page(jsonb_set(pg_temp.document(),'{availability,timezone}','"America/New_York"'),4);
+select public.dt_publish_page(true,5);
+insert into dt_test_results select ok(exists(select 1 from public.dt_available_slots(pg_temp.sid(1),current_date+1) where start_at=((current_date+1)+time '09:00') at time zone 'America/New_York'),'named timezone generates the correct UTC instant');
+select public.dt_save_page(jsonb_set(pg_temp.document(),'{availability,notice}','168'),5);
+select public.dt_publish_page(true,6);
+insert into dt_test_results select is((select count(*)::int from public.dt_available_slots(pg_temp.sid(1),current_date+1)),0,'minimum notice is applied server side');
+select public.dt_save_page(jsonb_set(pg_temp.document(),'{availability,horizon}','1'),6);
+select public.dt_publish_page(true,7);
+insert into dt_test_results select is((select count(*)::int from public.dt_available_slots(pg_temp.sid(1),current_date+3)),0,'booking horizon rejects distant dates');
+insert into dt_test_results select throws_ok($$select public.dt_save_page(jsonb_set(pg_temp.document(),'{profile,accent}','"url(evil)"'),7)$$,'P0001',null,'unsafe theme injection rejected by direct RPC');
+insert into dt_test_results select throws_ok($$select public.dt_save_page(jsonb_set(pg_temp.document(),'{profile,links}','[{"label":"Bad","url":"javascript:alert(1)"}]'),7)$$,'P0001',null,'unsafe URL protocol rejected by database');
+insert into dt_test_results select throws_ok($$select public.dt_save_page(jsonb_set(pg_temp.document(),'{profile,avatar}',to_jsonb(pg_temp.uid(4)::text||'/'||pg_temp.uid(1)::text||'.png')),7)$$,'P0001',null,'cannot attach another creator image path');
+-- Metadata-only fixtures exercise Storage RLS, not an image-upload/browser test.
+insert into storage.objects(bucket_id,name,owner_id) values('date-tree-media',pg_temp.uid(1)::text||'/'||pg_temp.uid(1)::text||'.png',pg_temp.uid(1)::text);
+insert into dt_test_results select throws_ok($$insert into storage.objects(bucket_id,name,owner_id) values('date-tree-media',pg_temp.uid(4)::text||'/'||pg_temp.uid(1)::text||'.png',pg_temp.uid(1)::text)$$,'42501',null,'storage cannot write into another creator folder');
+select public.dt_save_page(jsonb_set(pg_temp.document(),'{profile,avatar}',to_jsonb(pg_temp.uid(1)::text||'/'||pg_temp.uid(1)::text||'.png')),7);
+reset role;
+set local role anon;
+insert into dt_test_results select is((select count(*)::int from storage.objects where bucket_id='date-tree-media' and name=pg_temp.uid(1)::text||'/'||pg_temp.uid(1)::text||'.png'),0,'draft image is private');
+reset role;
+select pg_temp.login(1);
+set local role authenticated;
+select public.dt_publish_page(true,8);
+reset role;
+set local role anon;
+insert into dt_test_results select is((select count(*)::int from storage.objects where bucket_id='date-tree-media' and name=pg_temp.uid(1)::text||'/'||pg_temp.uid(1)::text||'.png'),1,'published referenced image is readable');
+reset role;
+select pg_temp.login(1);
+set local role authenticated;
+select public.dt_publish_page(false,8);
+reset role;
+set local role anon;
+insert into dt_test_results select is((select count(*)::int from storage.objects where bucket_id='date-tree-media' and name=pg_temp.uid(1)::text||'/'||pg_temp.uid(1)::text||'.png'),0,'unpublishing revokes fresh image reads');
+reset role;
+delete from auth.sessions where id=pg_temp.uid(3);
+select pg_temp.login(3);
+set local role authenticated;
+insert into dt_test_results select throws_ok($$select public.dt_submit_request(pg_temp.payload(4,99))$$,'P0001',null,'revoked sessions cannot mutate');
+reset role;
+select pg_temp.login(1);
+set local role authenticated;
+select public.dt_save_page(jsonb_set(pg_temp.document(),'{services,0,duration}','60'),8);
+select public.dt_publish_page(true,9);
+reset role;
+select pg_temp.login(2);
+set local role authenticated;
+insert into dt_test_results select throws_ok($$select public.dt_submit_request(pg_temp.payload(1,100,'15:00'))$$,'P0001',null,'outdated service terms require a fresh review');
+reset role;
+select pg_temp.login(1);
+set local role authenticated;
+select public.dt_save_page(jsonb_set(pg_temp.document(),'{services,0,active}','false'),9);
+select public.dt_publish_page(true,10);
+insert into dt_test_results select is((select count(*)::int from public.dt_available_slots(pg_temp.sid(1),current_date+1)),0,'archived service offers no slots');
+insert into dt_test_results select is((select count(*)::int from public.dt_requests where service_id=pg_temp.sid(1)),1,'archiving preserves request history');
+-- Actual engine DST cases for this release; skip rather than fabricate time when
+-- the fixture date is outside the real 90-day booking horizon on future runs.
+select public.dt_save_page(jsonb_set(jsonb_set(pg_temp.document(),'{availability,timezone}','"America/New_York"'),'{availability,windows}','[{"day":0,"start":"00:00","end":"03:00"}]'),10);
+select public.dt_publish_page(true,11);
+insert into dt_test_results select case when date '2026-11-01' between current_date and current_date+89 then is((select count(*)::int from public.dt_available_slots(pg_temp.sid(1),date '2026-11-01') where start_at in ('2026-11-01T05:00Z','2026-11-01T06:00Z')),2,'DST fallback offers both distinct UTC occurrences of 01:00') else skip('DST fixture outside booking horizon') end;
+select public.dt_save_page(jsonb_set(jsonb_set(pg_temp.document(),'{availability,timezone}','"Australia/Sydney"'),'{availability,windows}','[{"day":0,"start":"02:00","end":"04:00"}]'),11);
+select public.dt_publish_page(true,12);
+insert into dt_test_results select case when date '2026-10-03' between current_date and current_date+89 then is((select count(*)::int from public.dt_available_slots(pg_temp.sid(1),date '2026-10-03')),0,'DST gap omits a window starting in a missing wall-clock hour') else skip('DST fixture outside booking horizon') end;
+reset role;
+insert into dt_test_results select * from finish();
+select result from dt_test_results;
+rollback;
