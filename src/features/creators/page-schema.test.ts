@@ -49,6 +49,18 @@ describe('creator page contracts', () => {
     d.profile.accent = 'url(https://example.com)';
     expect(pageDocumentSchema.safeParse(d).success).toBe(false);
   });
+  it('allows email links and owned custom-icon paths', () => {
+    const d = validPage();
+    d.profile.links = [
+      { label: 'Email me', url: 'mailto:hello@example.com' },
+      {
+        label: 'Portfolio',
+        url: 'https://example.com/work',
+        icon: '11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222.png',
+      },
+    ];
+    expect(pageDocumentSchema.safeParse(d).success).toBe(true);
+  });
   it('limits prices, questions, duplicated services and dates', () => {
     const d = validPage();
     d.services[0]!.pricing = 'fixed';

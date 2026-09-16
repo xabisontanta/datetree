@@ -4,7 +4,7 @@ create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 select no_plan();
 create temporary table dt_test_results(result text);
-grant select,insert on dt_test_results to anon,authenticated;
+grant select,insert on dt_test_results to anon,authenticated,service_role;
 create function pg_temp.uid(n int) returns uuid language sql immutable as $$
   select ('10000000-0000-4000-8000-' || lpad(n::text,12,'0'))::uuid
 $$;
@@ -27,6 +27,90 @@ $$;
 insert into auth.users(id,email,email_confirmed_at,raw_user_meta_data) select pg_temp.uid(n),'dt-transaction-test-'||n||'@example.test',now(),'{}'::jsonb from generate_series(1,4) n;
 insert into auth.sessions(id,user_id,created_at,updated_at) select pg_temp.uid(n),pg_temp.uid(n),now(),now() from generate_series(1,4) n;
 insert into public.profiles_private(id,is_adult,terms_accepted_at,privacy_accepted_at) select pg_temp.uid(n),true,now(),now() from generate_series(1,4) n;
+insert into dt_test_results select ok(
+  not has_column_privilege(
+    'authenticated',
+    'public.profiles_private',
+    'whatsapp_verified_at',
+    'INSERT'
+  ) and not has_column_privilege(
+    'authenticated',
+    'public.profiles_private',
+    'whatsapp_verified_at',
+    'UPDATE'
+  ),
+  'authenticated users cannot forge WhatsApp verification'
+);
+select pg_temp.login(4);
+set local role authenticated;
+update public.profiles_private
+set whatsapp_number='+27821234567'
+where id=pg_temp.uid(4);
+update public.profiles_private
+set whatsapp_notifications_consent_at='2000-01-01T00:00:00Z'
+where id=pg_temp.uid(4);
+insert into dt_test_results select ok(
+  (
+    select whatsapp_notifications_consent_at > statement_timestamp() - interval '1 minute'
+    from public.profiles_private
+    where id=pg_temp.uid(4)
+  ),
+  'WhatsApp consent uses a database timestamp'
+);
+insert into dt_test_results select throws_ok(
+  $$update public.profiles_private set whatsapp_verified_at=now() where id=pg_temp.uid(4)$$,
+  '42501',
+  null,
+  'creator cannot directly verify a WhatsApp number'
+);
+reset role;
+set local role service_role;
+insert into dt_test_results select lives_ok(
+  $$select dt_private.mark_whatsapp_verified('10000000-0000-4000-8000-000000000004','+27821234567')$$,
+  'service verifier can mark the exact stored WhatsApp number'
+);
+insert into dt_test_results select throws_ok(
+  $$select dt_private.mark_whatsapp_verified('10000000-0000-4000-8000-000000000004','+27821234568')$$,
+  'P0001',
+  null,
+  'service verifier rejects a changed WhatsApp number'
+);
+reset role;
+select pg_temp.login(4);
+set local role authenticated;
+update public.profiles_private
+set whatsapp_number='+27821234569'
+where id=pg_temp.uid(4);
+insert into dt_test_results select ok(
+  (
+    select whatsapp_verified_at is null
+      and whatsapp_notifications_consent_at is null
+    from public.profiles_private
+    where id=pg_temp.uid(4)
+  ),
+  'changing a WhatsApp number clears verification and consent'
+);
+reset role;
+insert into dt_test_results select ok(
+  dt_private.valid_document(
+    jsonb_set(
+      pg_temp.document(),
+      '{profile,links}',
+      '[{"label":"Email","url":"mailto:hello@example.test"}]'::jsonb
+    )
+  ),
+  'database accepts a safe email social link'
+);
+insert into dt_test_results select ok(
+  not dt_private.valid_document(
+    jsonb_set(
+      pg_temp.document(),
+      '{profile,links}',
+      '[{"label":"Bad","url":"javascript:alert(1)","icon":"bad.png"}]'::jsonb
+    )
+  ),
+  'database rejects unsafe social destinations and icon paths'
+);
 select pg_temp.login(1);
 set local role authenticated;
 insert into dt_test_results select is(public.dt_save_page(pg_temp.document(),0),1,'owner can save a complete draft');
@@ -60,9 +144,145 @@ insert into dt_test_results select throws_ok($$select public.dt_submit_request(p
 insert into dt_test_results select lives_ok($$select public.dt_submit_request(pg_temp.payload(1,1))$$,'verified requester can submit');
 insert into dt_test_results select is(public.dt_submit_request(pg_temp.payload(1,1)),public.dt_submit_request(pg_temp.payload(1,1)),'repeated submit returns the same receipt');
 insert into dt_test_results select is((select count(*)::int from public.dt_requests),1,'duplicate request created once');
+insert into dt_test_results select is(
+  (select count(*)::int from public.dt_notification_statuses()),
+  1,
+  'requester sees one deduplicated email confirmation intent'
+);
+insert into dt_test_results select throws_ok(
+  $$select * from dt_private.notification_deliveries$$,
+  '42501',
+  null,
+  'notification destinations are not readable by authenticated users'
+);
+insert into dt_test_results select throws_ok(
+  $$select * from public.dt_claim_notification_deliveries((select id from public.dt_requests where service_id=pg_temp.sid(1)),pg_temp.uid(2),array['email'],1)$$,
+  '42501',
+  null,
+  'authenticated clients cannot claim provider deliveries'
+);
 insert into dt_test_results select is((select count(*)::int from public.dt_request_details()),0,'requester cannot read meeting instructions before acceptance');
 insert into dt_test_results select ok(exists(select 1 from public.dt_available_slots(pg_temp.sid(1),current_date+1) where start_at=((current_date+1)+time '10:00') at time zone 'UTC'),'pending request does not reserve slot');
 reset role;
+select set_config(
+  'dt.lease_delivery_id',
+  (
+    select min(id)::text
+    from dt_private.notification_deliveries
+    where request_id=(select id from public.dt_requests where service_id=pg_temp.sid(1))
+      and channel='email'
+  ),
+  true
+);
+update dt_private.notification_deliveries
+set status='accepted'
+where request_id=(select id from public.dt_requests where service_id=pg_temp.sid(1))
+  and channel='email'
+  and id<>current_setting('dt.lease_delivery_id')::bigint;
+insert into dt_test_results select ok(
+  (
+    select bool_and(idempotency_key ~ '^[A-Za-z0-9_-]{1,255}$')
+    from dt_private.notification_deliveries
+  ),
+  'provider delivery idempotency keys use the supported character set'
+);
+set local role service_role;
+select set_config(
+  'dt.first_claim',
+  (
+    select jsonb_build_object(
+      'id',delivery_id,
+      'token',claim_token,
+      'key',idempotency_key,
+      'attempts',attempts
+    )::text
+    from public.dt_claim_notification_deliveries(
+      (select id from public.dt_requests where service_id=pg_temp.sid(1)),
+      pg_temp.uid(2),
+      array['email'],
+      1
+    )
+  ),
+  true
+);
+insert into dt_test_results select ok(
+  current_setting('dt.first_claim')::jsonb ->> 'token' is not null,
+  'delivery claim receives a fenced lease token'
+);
+insert into dt_test_results select is(
+  (
+    select count(*)::int
+    from public.dt_claim_notification_deliveries(
+      (select id from public.dt_requests where service_id=pg_temp.sid(1)),
+      pg_temp.uid(2),
+      array['email'],
+      1
+    )
+  ),
+  0,
+  'an active delivery lease cannot be claimed twice'
+);
+reset role;
+update dt_private.notification_deliveries
+set claimed_at=statement_timestamp()-interval '6 minutes'
+where id=current_setting('dt.lease_delivery_id')::bigint;
+set local role service_role;
+select set_config(
+  'dt.second_claim',
+  (
+    select jsonb_build_object(
+      'id',delivery_id,
+      'token',claim_token,
+      'key',idempotency_key,
+      'attempts',attempts
+    )::text
+    from public.dt_claim_notification_deliveries(
+      (select id from public.dt_requests where service_id=pg_temp.sid(1)),
+      pg_temp.uid(2),
+      array['email'],
+      1
+    )
+  ),
+  true
+);
+insert into dt_test_results select ok(
+  current_setting('dt.first_claim')::jsonb ->> 'id'
+    = current_setting('dt.second_claim')::jsonb ->> 'id'
+  and current_setting('dt.first_claim')::jsonb ->> 'key'
+    = current_setting('dt.second_claim')::jsonb ->> 'key'
+  and current_setting('dt.first_claim')::jsonb ->> 'token'
+    <> current_setting('dt.second_claim')::jsonb ->> 'token',
+  'an expired lease is reclaimed with the same idempotency key and a new fence'
+);
+insert into dt_test_results select throws_ok(
+  format(
+    $$select public.dt_finish_notification_delivery(%s,'%s','%s','accepted')$$,
+    current_setting('dt.first_claim')::jsonb ->> 'id',
+    current_setting('dt.first_claim')::jsonb ->> 'token',
+    current_setting('dt.first_claim')::jsonb ->> 'key'
+  ),
+  'P0001',
+  null,
+  'an expired worker cannot finish a reclaimed delivery'
+);
+insert into dt_test_results select lives_ok(
+  format(
+    $$select public.dt_finish_notification_delivery(%s,'%s','%s','accepted')$$,
+    current_setting('dt.second_claim')::jsonb ->> 'id',
+    current_setting('dt.second_claim')::jsonb ->> 'token',
+    current_setting('dt.second_claim')::jsonb ->> 'key'
+  ),
+  'the current lease holder can finish a delivery'
+);
+reset role;
+insert into dt_test_results select ok(
+  (
+    select status='accepted' and claim_token is null and claimed_at is null
+    from dt_private.notification_deliveries
+    where id=current_setting('dt.lease_delivery_id')::bigint
+  ),
+  'finishing a delivery clears its lease'
+);
 select pg_temp.login(3);
 set local role authenticated;
 insert into dt_test_results select is((select count(*)::int from public.dt_requests),0,'requester isolation hides another client request');
@@ -156,7 +376,20 @@ insert into dt_test_results select throws_ok($$select public.dt_save_page(jsonb_
 -- Metadata-only fixtures exercise Storage RLS, not an image-upload/browser test.
 insert into storage.objects(bucket_id,name,owner_id) values('date-tree-media',pg_temp.uid(1)::text||'/'||pg_temp.uid(1)::text||'.png',pg_temp.uid(1)::text);
 insert into dt_test_results select throws_ok($$insert into storage.objects(bucket_id,name,owner_id) values('date-tree-media',pg_temp.uid(4)::text||'/'||pg_temp.uid(1)::text||'.png',pg_temp.uid(1)::text)$$,'42501',null,'storage cannot write into another creator folder');
-select public.dt_save_page(jsonb_set(pg_temp.document(),'{profile,avatar}',to_jsonb(pg_temp.uid(1)::text||'/'||pg_temp.uid(1)::text||'.png')),7);
+select public.dt_save_page(
+  jsonb_set(
+    pg_temp.document(),
+    '{profile,links}',
+    jsonb_build_array(
+      jsonb_build_object(
+        'label','Portfolio',
+        'url','https://example.test/work',
+        'icon',pg_temp.uid(1)::text||'/'||pg_temp.uid(1)::text||'.png'
+      )
+    )
+  ),
+  7
+);
 reset role;
 set local role anon;
 insert into dt_test_results select is((select count(*)::int from storage.objects where bucket_id='date-tree-media' and name=pg_temp.uid(1)::text||'/'||pg_temp.uid(1)::text||'.png'),0,'draft image is private');
@@ -166,7 +399,7 @@ set local role authenticated;
 select public.dt_publish_page(true,8);
 reset role;
 set local role anon;
-insert into dt_test_results select is((select count(*)::int from storage.objects where bucket_id='date-tree-media' and name=pg_temp.uid(1)::text||'/'||pg_temp.uid(1)::text||'.png'),1,'published referenced image is readable');
+insert into dt_test_results select is((select count(*)::int from storage.objects where bucket_id='date-tree-media' and name=pg_temp.uid(1)::text||'/'||pg_temp.uid(1)::text||'.png'),1,'published custom social icon is readable');
 reset role;
 select pg_temp.login(1);
 set local role authenticated;

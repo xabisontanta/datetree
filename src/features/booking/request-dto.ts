@@ -19,6 +19,43 @@ export const requestDtoSchema = z.object({
   delivery_due_at: z.string().nullable(),
 });
 export type RequestDTO = z.infer<typeof requestDtoSchema>;
+export const notificationStatusDtoSchema = z.object({
+  request_id: z.uuid(),
+  event_id: z.number(),
+  recipient_role: z.enum(['creator', 'requester']),
+  channel: z.enum(['email', 'whatsapp']),
+  template_name: z.string(),
+  status: z.string(),
+  attempts: z.number(),
+  updated_at: z.string(),
+});
+export type NotificationStatusDTO = z.infer<typeof notificationStatusDtoSchema>;
+
+export function latestNotificationStatusesByChannel(statuses: NotificationStatusDTO[]) {
+  const latest = new Map<NotificationStatusDTO['channel'], NotificationStatusDTO>();
+
+  // dt_notification_statuses returns newest events first, so preserve the first
+  // status encountered for each channel instead of overwriting it with an older one.
+  for (const status of statuses) {
+    if (!latest.has(status.channel)) latest.set(status.channel, status);
+  }
+
+  return [...latest.values()];
+}
+
+export function notificationStatusLabel(status: NotificationStatusDTO) {
+  const channel = status.channel === 'email' ? 'Email' : 'WhatsApp';
+  const state: Record<string, string> = {
+    provider_not_configured: 'waiting for provider setup',
+    queued: 'queued',
+    processing: 'sending',
+    accepted: 'accepted by provider',
+    delivered: 'delivered',
+    retry_scheduled: 'retry scheduled',
+    permanent_failure: 'could not be delivered',
+  };
+  return `${channel}: ${state[status.status] ?? 'status unavailable'}`;
+}
 export function requestStatusLabel(r: RequestDTO) {
   if (r.status === 'CONFIRMED')
     return r.snapshot.kind === 'scheduled'

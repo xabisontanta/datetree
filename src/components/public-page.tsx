@@ -3,11 +3,13 @@ import Image from 'next/image';
 import Link from 'next/link';
 import type { CSSProperties, ReactNode } from 'react';
 import { ArrowUpRight, CalendarDays, MessageCircle, Sparkles } from 'lucide-react';
+import { SocialIcon } from '@/components/social-icon';
 import {
   priceLabel,
   type PublicPage,
   type PublicService,
 } from '@/features/creators/page-schema';
+import { detectSocialPlatform, opensInNewTab } from '@/features/creators/social-links';
 
 export function mediaUrl(path: string) {
   return `/api/media?path=${encodeURIComponent(path)}`;
@@ -103,6 +105,36 @@ export function PublicPageView({
         <h1>{p.displayName || 'Your name. Your world.'}</h1>
         {p.tagline && <p className="dt-tagline">{p.tagline}</p>}
         {p.bio && <p className="dt-bio">{p.bio}</p>}
+        {p.links.length > 0 && (
+          <nav className="dt-public-links" aria-label="Creator links">
+            {p.links.map((link, index) => {
+              const platform = detectSocialPlatform(link.url);
+              const external = opensInNewTab(link.url);
+              return (
+                <a
+                  key={`${link.url}-${index}`}
+                  href={link.url}
+                  target={external ? '_blank' : undefined}
+                  rel={external ? 'noopener noreferrer nofollow ugc' : undefined}
+                  aria-label={link.label}
+                  title={link.label}
+                >
+                  {platform === 'custom' && link.icon ? (
+                    <Image
+                      unoptimized
+                      width={64}
+                      height={64}
+                      src={mediaUrl(link.icon)}
+                      alt=""
+                    />
+                  ) : (
+                    <SocialIcon platform={platform} />
+                  )}
+                </a>
+              );
+            })}
+          </nav>
+        )}
         {page.services.length > 0 ? (
           <section className="dt-service-list" aria-label="Services">
             <h2>Work with me</h2>
@@ -148,21 +180,6 @@ export function PublicPageView({
           </section>
         ) : (
           <p className="dt-subtle">Your services will appear here.</p>
-        )}
-        {p.links.length > 0 && (
-          <nav className="dt-public-links" aria-label="More from this creator">
-            {p.links.map((l, i) => (
-              <a
-                key={`${l.url}-${i}`}
-                href={l.url}
-                target="_blank"
-                rel="noopener noreferrer nofollow ugc"
-              >
-                {l.label}
-                <ArrowUpRight aria-hidden="true" />
-              </a>
-            ))}
-          </nav>
         )}
         {children}
         <Link className="dt-powered" href="/">

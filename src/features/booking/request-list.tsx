@@ -3,10 +3,16 @@ import { Button } from '@/components/ui/button';
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { transitionRequest } from '@/app/requests/actions';
+import { retryRequestNotifications, transitionRequest } from '@/app/requests/actions';
 import { Notice, Select } from '@/components/editor-fields';
 import { priceLabel } from '@/features/creators/page-schema';
-import { requestStatusLabel, type RequestDTO } from './request-dto';
+import {
+  latestNotificationStatusesByChannel,
+  notificationStatusLabel,
+  requestStatusLabel,
+  type NotificationStatusDTO,
+  type RequestDTO,
+} from './request-dto';
 import { SlotPicker } from '@/features/requester/slot-picker';
 
 export function RequestList({
@@ -14,11 +20,13 @@ export function RequestList({
   creator,
   details = {},
   contacts = {},
+  notifications = {},
 }: {
   requests: RequestDTO[];
   creator: boolean;
   details?: Record<string, string>;
   contacts?: Record<string, string>;
+  notifications?: Partial<Record<string, NotificationStatusDTO[]>>;
 }) {
   const [filter, setFilter] = useState('all');
   const [error, setError] = useState('');
@@ -41,11 +49,18 @@ export function RequestList({
       }
     });
   }
+  function retryNotifications(requestId: string) {
+    startTransition(async () => {
+      const result = await retryRequestNotifications(requestId);
+      setError(result.error);
+      if (!result.error) router.refresh();
+    });
+  }
   return (
     <div className="dt-stack">
       <div className="dt-notice">
-        Requests are saved here. Email and WhatsApp status notifications are not
-        connected yet; check this inbox for updates.
+        Requests are saved here first. Date Tree tracks email and WhatsApp delivery
+        separately, so a provider failure never loses a request.
       </div>
       {error && <Notice error>{error}</Notice>}
       <Select
@@ -158,6 +173,37 @@ export function RequestList({
                 the client until online payments are connected.
               </small>
             )}
+            {notifications[r.id]?.length ? (
+              <div className="dt-notification-status">
+                <strong>Status notification</strong>
+                {latestNotificationStatusesByChannel(notifications[r.id]!).map(
+                  (status) => (
+                    <small key={status.channel}>
+                      {notificationStatusLabel(status)}
+                    </small>
+                  ),
+                )}
+                {latestNotificationStatusesByChannel(notifications[r.id]!).some(
+                  (status) =>
+                    [
+                      'provider_not_configured',
+                      'queued',
+                      'processing',
+                      'retry_scheduled',
+                    ].includes(status.status),
+                ) && (
+                  <Button
+                    variant="ghost"
+                    type="button"
+                    className="dt-text-button"
+                    disabled={busy}
+                    onClick={() => retryNotifications(r.id)}
+                  >
+                    Retry notification
+                  </Button>
+                )}
+              </div>
+            ) : null}
             <div className="dt-actions">
               {creator && r.status === 'PENDING_CREATOR' && (
                 <Button

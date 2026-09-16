@@ -93,7 +93,7 @@ export function ServiceRequest({
                 </Link>
                 <small>
                   Reference {receipt.slice(0, 8)}. Check your requests page for updates;
-                  status notifications are not connected yet.
+                  notification delivery is tracked separately there.
                 </small>
               </div>
             ) : !verified ? (

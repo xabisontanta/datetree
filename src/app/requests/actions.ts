@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
 import { requestSchema, transitionSchema } from '@/features/booking/request-schema';
 import type { Json } from '@/lib/supabase/database.types';
+import { dispatchRequestNotifications } from '@/services/notifications/dispatch';
 
 export async function sendRequesterLink(
   email: string,
@@ -53,6 +54,7 @@ export async function submitRequest(input: unknown) {
   const { data: id, error } = await db.rpc('dt_submit_request', {
     payload: parsed.data as Json,
   });
+  if (!error && id) await dispatchRequestNotifications(db, id);
   return {
     error: error
       ? error.code === 'P0001'
@@ -74,6 +76,7 @@ export async function transitionRequest(input: unknown) {
     expected_version: p.data.version,
     ...(p.data.start ? { proposed_start: p.data.start } : {}),
   });
+  if (!error) await dispatchRequestNotifications(db, p.data.id);
   revalidatePath('/dashboard');
   revalidatePath('/requests');
   return {
@@ -82,5 +85,24 @@ export async function transitionRequest(input: unknown) {
         ? error.message
         : 'Could not update the request.'
       : '',
+  };
+}
+
+export async function retryRequestNotifications(requestId: string) {
+  const parsed = z.uuid().safeParse(requestId);
+  if (!parsed.success) return { error: 'Invalid request.' };
+  const db = await createClient();
+  const { data } = await db.auth.getUser();
+  if (!data.user) return { error: 'Your session expired. Sign in again.' };
+  const result = await dispatchRequestNotifications(db, parsed.data);
+  revalidatePath('/dashboard/requests');
+  revalidatePath('/requests');
+  return {
+    error:
+      result === 'not-configured'
+        ? 'Email and WhatsApp delivery providers are not connected yet. Your request is still saved here.'
+        : result === 'failed'
+          ? 'Could not retry delivery right now. Your request is still safe.'
+          : '',
   };
 }

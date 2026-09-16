@@ -8,6 +8,14 @@ const bookingFixSql = readFileSync(
   'supabase/migrations/20260915151736_improve_booking_calendar_and_manual_payments.sql',
   'utf8',
 );
+const socialAndNotificationSql = readFileSync(
+  'supabase/migrations/20260915203808_creator_social_links_and_notifications.sql',
+  'utf8',
+);
+const notificationHardeningSql = readFileSync(
+  'supabase/migrations/20260916014755_harden_notification_delivery.sql',
+  'utf8',
+);
 describe('service-page migration contracts', () => {
   it('enforces overlap with a database exclusion constraint', () => {
     expect(sql).toContain('exclude using gist');
@@ -55,5 +63,57 @@ describe('service-page migration contracts', () => {
   it('allows fixed-price acceptance without claiming payment was collected', () => {
     expect(bookingFixSql).not.toContain('Paid requests cannot be accepted yet.');
     expect(bookingFixSql).toContain("target:='CONFIRMED'");
+  });
+  it('keeps notification destinations private and delivery writes service-only', () => {
+    expect(socialAndNotificationSql).toContain(
+      'alter table dt_private.notification_deliveries enable row level security',
+    );
+    expect(socialAndNotificationSql).toContain(
+      'unique(event_id, recipient_role, channel)',
+    );
+    expect(socialAndNotificationSql).toContain('to service_role');
+    const statusProjection = socialAndNotificationSql.slice(
+      socialAndNotificationSql.indexOf(
+        'create function dt_private.notification_statuses',
+      ),
+      socialAndNotificationSql.indexOf(
+        'create function public.dt_notification_statuses',
+      ),
+    );
+    expect(statusProjection).not.toContain('recipient_address');
+  });
+  it('validates custom icons as owned media and publishes only referenced icons', () => {
+    expect(socialAndNotificationSql).toContain(
+      "union all select value ->> 'icon' from jsonb_array_elements(p -> 'links')",
+    );
+    expect(socialAndNotificationSql).toContain("link ->> 'icon' = name");
+    expect(socialAndNotificationSql).toContain(
+      'valid_document_without_custom_link_icons',
+    );
+  });
+  it('protects WhatsApp verification behind a service-only boundary', () => {
+    expect(notificationHardeningSql).toContain(
+      'revoke insert, update on table public.profiles_private from authenticated',
+    );
+    expect(notificationHardeningSql).toContain(
+      'grant execute on function dt_private.mark_whatsapp_verified(uuid, text)',
+    );
+    expect(notificationHardeningSql).toContain('to service_role');
+    expect(notificationHardeningSql).not.toMatch(
+      /grant execute on function dt_private\.mark_whatsapp_verified\([\s\S]+?to authenticated/i,
+    );
+  });
+  it('uses provider-safe idempotency keys and fenced reclaimable leases', () => {
+    expect(notificationHardeningSql).toContain(
+      "check (idempotency_key ~ '^[A-Za-z0-9_-]{1,255}$')",
+    );
+    expect(notificationHardeningSql).toContain('claim_token uuid');
+    expect(notificationHardeningSql).toContain('for update skip locked');
+    expect(notificationHardeningSql).toContain(
+      "statement_timestamp() - interval '5 minutes'",
+    );
+    expect(notificationHardeningSql).toContain(
+      'and result.claim_token = delivery_claim',
+    );
   });
 });

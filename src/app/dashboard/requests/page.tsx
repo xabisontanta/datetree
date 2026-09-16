@@ -2,7 +2,11 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { RequestList } from '@/features/booking/request-list';
-import { REQUEST_COLUMNS, requestDtoSchema } from '@/features/booking/request-dto';
+import {
+  notificationStatusDtoSchema,
+  REQUEST_COLUMNS,
+  requestDtoSchema,
+} from '@/features/booking/request-dto';
 import { BrandMark } from '@/components/brand-mark';
 export const dynamic = 'force-dynamic';
 export default async function CreatorRequestsPage() {
@@ -18,11 +22,19 @@ export default async function CreatorRequestsPage() {
   const parsed = requestDtoSchema.array().safeParse(data);
   const { data: meetingDetails } = await db.rpc('dt_request_details');
   const { data: contactRows } = await db.rpc('dt_request_contacts');
+  const { data: notificationRows } = await db.rpc('dt_notification_statuses');
   const contacts = Object.fromEntries(
     (contactRows ?? []).map((d) => [d.request_id, d.email]),
   );
   const details = Object.fromEntries(
     (meetingDetails ?? []).map((d) => [d.request_id, d.details]),
+  );
+  const parsedNotifications = notificationStatusDtoSchema
+    .array()
+    .safeParse(notificationRows);
+  const notifications = Object.groupBy(
+    parsedNotifications.success ? parsedNotifications.data : [],
+    (row) => row.request_id,
   );
   return (
     <main className="dt-app dt-narrow">
@@ -49,6 +61,7 @@ export default async function CreatorRequestsPage() {
           creator
           details={details}
           contacts={contacts}
+          notifications={notifications}
         />
       )}
       <p className="dt-muted">Showing your latest 100 requests.</p>

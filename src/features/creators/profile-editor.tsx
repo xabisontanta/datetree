@@ -2,8 +2,14 @@
 import { Button } from '@/components/ui/button';
 
 import { Field, Select, TextArea } from '@/components/editor-fields';
+import { SocialIcon } from '@/components/social-icon';
 import { ImageUpload } from './image-upload';
 import type { PageProfile } from './page-schema';
+import {
+  detectSocialPlatform,
+  normalizeSocialDestination,
+  platformLabel,
+} from './social-links';
 export function ProfileEditor({
   profile: p,
   locked,
@@ -67,11 +73,25 @@ export function ProfileEditor({
         </summary>
         <div className="dt-stack dt-detail-body">
           {p.links.map((l, i) => (
-            <div key={i} className="dt-panel dt-stack">
+            <div key={i} className="dt-panel dt-stack dt-social-link-editor">
+              <div className="dt-social-link-heading">
+                <span className="dt-social-link-preview" aria-hidden="true">
+                  <SocialIcon platform={detectSocialPlatform(l.url)} />
+                </span>
+                <div>
+                  <strong>{platformLabel(detectSocialPlatform(l.url))}</strong>
+                  <small>
+                    {detectSocialPlatform(l.url) === 'custom'
+                      ? 'Add your own logo, or Date Tree will show a link icon.'
+                      : 'Date Tree will use the official platform icon.'}
+                  </small>
+                </div>
+              </div>
               <Field
-                label="Button label"
+                label="Link name"
                 value={l.label}
                 maxLength={60}
+                placeholder="Instagram, coaching website, email..."
                 onChange={(e) =>
                   onChange({
                     ...p,
@@ -82,10 +102,13 @@ export function ProfileEditor({
                 }
               />
               <Field
-                label="Link"
+                label="Destination"
                 value={l.url}
-                type="url"
-                placeholder="https://instagram.com/yourname"
+                type="text"
+                inputMode="url"
+                autoCapitalize="none"
+                spellCheck={false}
+                placeholder="instagram.com/yourname or you@example.com"
                 onChange={(e) =>
                   onChange({
                     ...p,
@@ -94,7 +117,40 @@ export function ProfileEditor({
                     ),
                   })
                 }
+                onBlur={() => {
+                  const url = normalizeSocialDestination(l.url);
+                  const platform = detectSocialPlatform(url);
+                  onChange({
+                    ...p,
+                    links: p.links.map((value, index) =>
+                      index === i
+                        ? {
+                            ...value,
+                            url,
+                            label:
+                              value.label ||
+                              (platform === 'custom' ? '' : platformLabel(platform)),
+                            icon: platform === 'custom' ? value.icon : '',
+                          }
+                        : value,
+                    ),
+                  });
+                }}
               />
+              {detectSocialPlatform(l.url) === 'custom' && (
+                <ImageUpload
+                  label="Custom icon (optional)"
+                  value={l.icon ?? ''}
+                  onChange={(icon) =>
+                    onChange({
+                      ...p,
+                      links: p.links.map((value, index) =>
+                        index === i ? { ...value, icon } : value,
+                      ),
+                    })
+                  }
+                />
+              )}
               <div className="dt-actions">
                 <Button
                   variant="ghost"
@@ -145,16 +201,17 @@ export function ProfileEditor({
               onClick={() =>
                 onChange({
                   ...p,
-                  links: [
-                    ...p.links,
-                    { label: 'Instagram', url: 'https://instagram.com/' },
-                  ],
+                  links: [...p.links, { label: '', url: '', icon: '' }],
                 })
               }
             >
               ＋ Add a link
             </Button>
           )}
+          <small>
+            Paste a social URL, email address, or WhatsApp number. Links appear publicly
+            only after they are valid, saved, and published.
+          </small>
         </div>
       </details>
     </div>

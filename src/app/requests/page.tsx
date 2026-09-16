@@ -2,7 +2,11 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { RequestList } from '@/features/booking/request-list';
-import { REQUEST_COLUMNS, requestDtoSchema } from '@/features/booking/request-dto';
+import {
+  notificationStatusDtoSchema,
+  REQUEST_COLUMNS,
+  requestDtoSchema,
+} from '@/features/booking/request-dto';
 import { BrandMark } from '@/components/brand-mark';
 export const dynamic = 'force-dynamic';
 export default async function RequestsPage() {
@@ -17,8 +21,16 @@ export default async function RequestsPage() {
     .limit(100);
   const parsed = requestDtoSchema.array().safeParse(data);
   const { data: meetingDetails } = await db.rpc('dt_request_details');
+  const { data: notificationRows } = await db.rpc('dt_notification_statuses');
   const details = Object.fromEntries(
     (meetingDetails ?? []).map((d) => [d.request_id, d.details]),
+  );
+  const parsedNotifications = notificationStatusDtoSchema
+    .array()
+    .safeParse(notificationRows);
+  const notifications = Object.groupBy(
+    parsedNotifications.success ? parsedNotifications.data : [],
+    (row) => row.request_id,
   );
   return (
     <main className="dt-app dt-narrow">
@@ -38,7 +50,12 @@ export default async function RequestsPage() {
           Could not load your requests. Please reload.
         </p>
       ) : (
-        <RequestList requests={parsed.data} creator={false} details={details} />
+        <RequestList
+          requests={parsed.data}
+          creator={false}
+          details={details}
+          notifications={notifications}
+        />
       )}
       <p className="dt-muted">Showing your latest 100 requests.</p>
     </main>

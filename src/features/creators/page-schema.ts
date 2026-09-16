@@ -34,13 +34,24 @@ const imagePath = z
   .string()
   .regex(/^[0-9a-f-]{36}\/[0-9a-f-]{36}\.png$/)
   .or(z.literal(''));
-const safeUrl = z
-  .url()
+const safeSocialDestination = z
+  .string()
+  .trim()
   .max(2048)
-  .refine((v) => {
-    const u = new URL(v);
-    return u.protocol === 'https:' && !u.username && !u.password;
-  }, 'Use an https:// link without credentials.');
+  .refine((value) => {
+    if (/^mailto:[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(value)) return true;
+    try {
+      const url = new URL(value);
+      return url.protocol === 'https:' && !url.username && !url.password;
+    } catch {
+      return false;
+    }
+  }, 'Use a safe https:// link or email address.');
+const socialLinkSchema = z.object({
+  label: z.string().trim().min(1).max(60),
+  url: safeSocialDestination,
+  icon: imagePath.optional(),
+});
 export const publicServiceSchema = z.object({
   id: z.uuid(),
   title: z.string().trim().min(2).max(80),
@@ -94,9 +105,7 @@ export const profileSchema = z.object({
   buttons: z.enum(['pill', 'rounded', 'square']),
   cards: z.enum(['solid', 'glass', 'outline']),
   scheme: z.enum(['light', 'dark']),
-  links: z
-    .array(z.object({ label: z.string().trim().min(1).max(60), url: safeUrl }))
-    .max(12),
+  links: z.array(socialLinkSchema).max(12),
 });
 const windowSchema = z
   .object({

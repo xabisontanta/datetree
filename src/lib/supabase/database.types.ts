@@ -68,7 +68,6 @@ export type Database = {
         Insert: {
           id: string;
           whatsapp_number?: string | null;
-          whatsapp_verified_at?: string | null;
           is_adult?: boolean;
           terms_accepted_at?: string | null;
           privacy_accepted_at?: string | null;
@@ -79,7 +78,6 @@ export type Database = {
         };
         Update: {
           whatsapp_number?: string | null;
-          whatsapp_verified_at?: string | null;
           is_adult?: boolean;
           terms_accepted_at?: string | null;
           privacy_accepted_at?: string | null;
@@ -159,6 +157,19 @@ export type Database = {
       dt_request_details: {
         Args: Record<string, never>;
         Returns: { request_id: string; details: string }[];
+      };
+      dt_notification_statuses: {
+        Args: Record<string, never>;
+        Returns: {
+          request_id: string;
+          event_id: number;
+          recipient_role: 'creator' | 'requester';
+          channel: 'email' | 'whatsapp';
+          template_name: string;
+          status: string;
+          attempts: number;
+          updated_at: string;
+        }[];
       };
       dt_save_page: {
         Args: { document: Json; expected_revision: number };

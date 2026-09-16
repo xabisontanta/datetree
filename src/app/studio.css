@@ -412,6 +412,35 @@
   accent-color: var(--primary);
   display: block;
 }
+.dt-social-link-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.dt-social-link-heading > div {
+  display: grid;
+  gap: 2px;
+}
+.dt-social-link-heading small {
+  color: var(--muted-foreground);
+}
+.dt-social-link-preview {
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+.dt-social-link-preview svg {
+  width: 19px;
+  height: 19px;
+}
+.dt-social-link-editor .dt-image-upload > img {
+  width: 72px;
+  height: 72px;
+}
 .dt-theme-grid {
   display: flex;
   flex-wrap: wrap;
@@ -659,24 +688,47 @@
   object-fit: cover;
 }
 .dt-public-links {
-  display: grid;
+  display: flex;
+  flex-wrap: wrap;
   gap: 10px;
-  margin-top: 28px;
+  margin: 16px 0 28px;
 }
 .dt-public-links a {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 52px;
-  padding: 14px 18px;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
   border: 1px solid color-mix(in srgb, var(--page-text) 24%, transparent);
-  border-radius: var(--page-radius);
-  font-size: 14px;
+  border-radius: 13px;
   background: var(--page-card);
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease;
 }
-.dt-public-links svg {
-  width: 18px;
-  height: 18px;
+.dt-public-links a:hover {
+  transform: translateY(-2px);
+  border-color: var(--page-accent);
+}
+.dt-public-links a:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--page-accent) 65%, transparent);
+  outline-offset: 3px;
+}
+.dt-public-links svg,
+.dt-public-links img {
+  width: 20px;
+  height: 20px;
+}
+.dt-notification-status {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+.dt-public-links img {
+  border-radius: 5px;
+  object-fit: cover;
 }
 .dt-powered {
   display: block;
