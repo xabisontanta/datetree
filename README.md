@@ -46,17 +46,22 @@ at `http://localhost:3000` by default.
 ## Notification providers
 
 Request transitions always commit before notification delivery. The Supabase
-`dt-notification-worker` sends queued email through Resend and WhatsApp through Sent
-when its server-side secrets are configured:
+`dt-notification-worker` sends queued WhatsApp messages through Twilio and optional
+booking email through Resend when server-side secrets are configured:
 
-- `RESEND_API_KEY` and `NOTIFICATION_EMAIL_FROM`
-- `SENT_DM_API_KEY` and `SENT_TEMPLATE_MAP`
-- Optional `SENT_PROFILE_ID`, `SENT_BASE_URL`, and `DATE_TREE_APP_URL`
+- `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_WHATSAPP_FROM`
+- Optional `TWILIO_CONTENT_SID_MAP` mapping logical names such as
+  `BOOKING_CONFIRMED` to approved Twilio Content SIDs (`HX...`)
+- Optional `RESEND_API_KEY` and `NOTIFICATION_EMAIL_FROM`
+- Optional `DATE_TREE_APP_URL`
 
-`SENT_TEMPLATE_MAP` is a JSON object mapping logical names such as
-`BOOKING_CONFIRMED` to approved provider template names. Configure these with
-`supabase secrets set`; never place them in browser variables or commit them. A provider
-acceptance is tracked as `accepted`, not falsely reported as delivered.
+Until Content SIDs are mapped, WhatsApp is sent as a session-style text body. That
+works in the Twilio sandbox after the recipient joins it; production business-initiated
+messages need Meta-approved templates. Configure secrets with
+`supabase secrets set`; never place them in browser variables or commit them. A
+provider acceptance is tracked as `accepted`, not falsely reported as delivered.
+
+Account, magic-link, and password-reset email still use Supabase Auth.
 
 ## Product boundaries
 

@@ -22,6 +22,8 @@ type NotificationDelivery = {
 };
 
 const jsonHeaders = { 'Content-Type': 'application/json' };
+const e164Pattern = /^\+\d{8,15}$/;
+const contentSidPattern = /^HX[A-Za-z0-9]{32}$/;
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: jsonHeaders });
@@ -29,6 +31,33 @@ function json(body: unknown, status = 200) {
 
 function safeText(value: unknown, fallback: string) {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback;
+}
+
+function normalizeE164(value: string) {
+  if (e164Pattern.test(value)) return value;
+  return `+${value.replace(/\D/g, '')}`;
+}
+
+function normalizeWhatsAppAddress(value: string) {
+  const trimmed = value.trim();
+  const raw = trimmed.toLowerCase().startsWith('whatsapp:')
+    ? trimmed.slice('whatsapp:'.length).trim()
+    : trimmed;
+  return `whatsapp:${normalizeE164(raw)}`;
+}
+
+function parseTwilioContentSidMap(raw: string | undefined) {
+  if (!raw?.trim()) return {} as Record<string, string>;
+  const parsed: unknown = JSON.parse(raw);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new TypeError('invalid_template_configuration');
+  }
+  return Object.fromEntries(
+    Object.entries(parsed).filter(
+      (entry): entry is [string, string] =>
+        typeof entry[1] === 'string' && contentSidPattern.test(entry[1]),
+    ),
+  );
 }
 
 function notificationText(delivery: NotificationDelivery, appUrl: string) {
@@ -91,7 +120,6 @@ async function sendEmail(
   });
   const result = (await response.json().catch(() => ({}))) as {
     id?: string;
-    name?: string;
   };
   return { response, providerId: result.id ?? null };
 }
@@ -99,47 +127,50 @@ async function sendEmail(
 async function sendWhatsApp(
   delivery: NotificationDelivery,
   message: ReturnType<typeof notificationText>,
-  apiKey: string,
-  templateMap: Record<string, string>,
+  accountSid: string,
+  authToken: string,
+  fromNumber: string,
+  contentSidMap: Record<string, string>,
 ) {
-  const template = templateMap[delivery.template_name];
-  if (!template) return null;
+  const params = new URLSearchParams({
+    From: normalizeWhatsAppAddress(fromNumber),
+    To: normalizeWhatsAppAddress(delivery.recipient_address),
+  });
+  const contentSid = contentSidMap[delivery.template_name];
+  if (contentSid) {
+    params.set('ContentSid', contentSid);
+    params.set(
+      'ContentVariables',
+      JSON.stringify({
+        '1': safeText(delivery.payload.creatorName, 'Your creator'),
+        '2': safeText(delivery.payload.serviceName, 'Service request'),
+        '3': safeText(delivery.payload.requestReference, 'unknown'),
+        '4': safeText(delivery.payload.nextStep, message.actionUrl),
+        '5': message.actionUrl,
+      }),
+    );
+  } else {
+    params.set('Body', message.text);
+  }
+
   const response = await fetch(
-    `${Deno.env.get('SENT_BASE_URL') ?? 'https://api.sent.dm'}/v3/messages`,
+    `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
     {
       method: 'POST',
       headers: {
-        ...jsonHeaders,
-        'x-api-key': apiKey,
+        Authorization: `Basic ${btoa(`${accountSid}:${authToken}`)}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
         'Idempotency-Key': delivery.idempotency_key,
-        ...(Deno.env.get('SENT_PROFILE_ID')
-          ? { 'x-profile-id': Deno.env.get('SENT_PROFILE_ID')! }
-          : {}),
+        'User-Agent': 'Date-Tree-Notifications/1.0',
       },
-      body: JSON.stringify({
-        to: [delivery.recipient_address],
-        channel: ['whatsapp'],
-        template: {
-          name: template,
-          parameters: {
-            creator_name: safeText(delivery.payload.creatorName, 'Your creator'),
-            service_name: safeText(delivery.payload.serviceName, 'Service request'),
-            request_reference: safeText(delivery.payload.requestReference, 'unknown'),
-            next_step: safeText(delivery.payload.nextStep, message.actionUrl),
-            action_url: message.actionUrl,
-          },
-        },
-      }),
+      body: params,
       signal: AbortSignal.timeout(10_000),
     },
   );
   const result = (await response.json().catch(() => ({}))) as {
-    data?: { recipients?: Array<{ message_id?: string }> };
+    sid?: string;
   };
-  return {
-    response,
-    providerId: result.data?.recipients?.[0]?.message_id ?? null,
-  };
+  return { response, providerId: result.sid ?? null };
 }
 
 Deno.serve(async (request: Request) => {
@@ -151,6 +182,7 @@ Deno.serve(async (request: Request) => {
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   const appUrl =
     Deno.env.get('DATE_TREE_APP_URL') ??
+    Deno.env.get('NEXT_PUBLIC_APP_URL') ??
     'https://date-tree-social-booking.xabison.chatgpt.site';
   const authorization = request.headers.get('Authorization');
   if (!supabaseUrl || !publishableKey || !serviceKey || !appUrl || !authorization)
@@ -171,16 +203,19 @@ Deno.serve(async (request: Request) => {
 
   const resendKey = Deno.env.get('RESEND_API_KEY');
   const emailFrom = Deno.env.get('NOTIFICATION_EMAIL_FROM');
-  const sentKey = Deno.env.get('SENT_DM_API_KEY');
-  let templateMap: Record<string, string> = {};
+  const twilioSid = Deno.env.get('TWILIO_ACCOUNT_SID');
+  const twilioToken = Deno.env.get('TWILIO_AUTH_TOKEN');
+  const twilioFrom = Deno.env.get('TWILIO_WHATSAPP_FROM');
+  let contentSidMap: Record<string, string> = {};
   try {
-    templateMap = JSON.parse(Deno.env.get('SENT_TEMPLATE_MAP') ?? '{}');
+    contentSidMap = parseTwilioContentSidMap(Deno.env.get('TWILIO_CONTENT_SID_MAP'));
   } catch {
     return json({ error: 'invalid_template_configuration' }, 503);
   }
+  const whatsappReady = Boolean(twilioSid && twilioToken && twilioFrom);
   const channels = [
     ...(resendKey && emailFrom ? ['email'] : []),
-    ...(sentKey && Object.keys(templateMap).length ? ['whatsapp'] : []),
+    ...(whatsappReady ? ['whatsapp'] : []),
   ];
   if (!channels.length) return json({ processed: 0, providerConfigured: false });
 
@@ -218,8 +253,15 @@ Deno.serve(async (request: Request) => {
       const result =
         delivery.channel === 'email' && resendKey && emailFrom
           ? await sendEmail(delivery, message, resendKey, emailFrom)
-          : delivery.channel === 'whatsapp' && sentKey
-            ? await sendWhatsApp(delivery, message, sentKey, templateMap)
+          : delivery.channel === 'whatsapp' && twilioSid && twilioToken && twilioFrom
+            ? await sendWhatsApp(
+                delivery,
+                message,
+                twilioSid,
+                twilioToken,
+                twilioFrom,
+                contentSidMap,
+              )
             : null;
       if (!result) {
         status = 'provider_not_configured';

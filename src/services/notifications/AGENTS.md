@@ -6,7 +6,7 @@ Own WhatsApp verification, booking and payment notifications, confirmations, cou
 
 ## Security and Reliability
 
-Keep `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_WHATSAPP_FROM` server-side. Verify Twilio webhook signatures using the exact externally visible URL and request data required by the provider. Rate-limit verification sends and attempts; never log OTP values.
+Keep `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_WHATSAPP_FROM` server-side. Optional `TWILIO_CONTENT_SID_MAP` maps logical names to Twilio Content SIDs. Submit Meta templates named `dt_request_received`, `dt_new_booking_request`, `dt_counter_offer`, `dt_booking_confirmed`, `dt_booking_declined`, `dt_booking_cancelled`, `dt_booking_completed`, and `dt_booking_status_updated`. Verify Twilio webhook signatures using the exact externally visible URL and request data required by the provider. Rate-limit verification sends and attempts; never log OTP values.
 
 Notifications are downstream side effects. WhatsApp failure must never roll back a successful booking or payment. Commit business state first, record an outbox/job or notification intent, then retry delivery independently with bounded backoff and idempotency. Store safe status, logical template name, provider reference, attempt count, and redacted error—not message secrets or unnecessary personal data.
 
