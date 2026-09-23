@@ -4,7 +4,10 @@
 
 Own the visitor booking experience, minimal data collection, phone-verification coordination, screening answers, request review, payment handoff, and requester-safe booking status view. Optimize for low friction and approximately 60-second request completion.
 
-Do not require full account registration before the first booking request unless a future approved requirement makes it necessary. Collect only display name, WhatsApp number, optional social handle, short introduction, 18+ confirmation, and creator-defined screening answers.
+Do not require creator registration to request a service. Use verified email access,
+display name, a brief, 18+ confirmation, sharing consent, and service-specific questions.
+WhatsApp is optional and requires separate consent. Appointments require a slot;
+deliverables and enquiries must not force an appointment calendar.
 
 ## Privacy and Authorization
 

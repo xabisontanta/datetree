@@ -436,6 +436,15 @@ insert into dt_test_results select case when date '2026-11-01' between current_d
 select public.dt_save_page(jsonb_set(jsonb_set(pg_temp.document(),'{availability,timezone}','"Australia/Sydney"'),'{availability,windows}','[{"day":0,"start":"02:00","end":"04:00"}]'),11);
 select public.dt_publish_page(true,12);
 insert into dt_test_results select case when date '2026-10-03' between current_date and current_date+89 then is((select count(*)::int from public.dt_available_slots(pg_temp.sid(1),date '2026-10-03')),0,'DST gap omits a window starting in a missing wall-clock hour') else skip('DST fixture outside booking horizon') end;
+-- A late UTC appointment falls on the next calendar date in UTC+14.
+select public.dt_save_page(jsonb_set(jsonb_set(pg_temp.document(),'{availability,windows}','[]'),'{availability,exceptions}',jsonb_build_array(jsonb_build_object('date',(current_date+20)::text,'windows',jsonb_build_array(jsonb_build_object('day',0,'start','23:00','end','23:45'))))),12);
+select public.dt_publish_page(true,13);
+reset role;
+set local role anon;
+insert into dt_test_results select is((select array_agg(available_date) from public.dt_available_dates_in_zone(pg_temp.sid(1),date_trunc('month',current_date+21)::date,'Pacific/Kiritimati')),array[current_date+21],'calendar converts late UTC slots into the next visitor date');
+insert into dt_test_results select is((select array_agg(available_date) from public.dt_available_dates_in_zone(pg_temp.sid(1),date_trunc('month',current_date+20)::date,'Pacific/Honolulu')),array[current_date+20],'calendar retains the correct negative-offset visitor date');
+insert into dt_test_results select throws_ok($$select * from public.dt_available_dates_in_zone(pg_temp.sid(1),date_trunc('month',current_date)::date,'Not/AZone')$$,'P0001',null,'calendar rejects invalid visitor timezones');
+insert into dt_test_results select is((select count(*)::int from public.dt_available_dates_in_zone(pg_temp.sid(1),(date_trunc('month',current_date)+interval '8 months')::date,'UTC')),0,'calendar bounds expensive requests to the booking horizon');
 reset role;
 insert into dt_test_results select * from finish();
 select result from dt_test_results;

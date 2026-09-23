@@ -16,4 +16,8 @@ Payment tests must prove browsers cannot declare success, only valid Paystack we
 
 Exercise RLS with realistic `anon`, authenticated owner, authenticated non-owner, and privileged server contexts—not only direct database-owner connections. Test public DTO shape to prevent accidental field exposure. Race tests should use real database constraints/transactions when available.
 
-No framework or scripts exist yet. When selected, document exact commands and test naming here. Meaningful changes require focused tests plus the repository's full typecheck, lint, and test suite before merge.
+Use Vitest (`npm test`, `*.test.ts`) and pgTAP (`npm run test:db`, `*.test.sql`).
+Run `npm run check` before release. Database tests require local Supabase and Docker;
+rollback-only remote checks must be identified separately. Test server/client data
+serialization as well as pure business logic; typechecking cannot detect RSC failures.
+Never label synthetic database identities or mocked tests as browser authentication QA.

@@ -13,6 +13,11 @@ import {
 } from '@/features/creators/page-schema';
 import { sendRequesterLink, submitRequest } from '@/app/requests/actions';
 import { SlotPicker } from './slot-picker';
+import {
+  isAmbiguousSubmissionResult,
+  retainRequestSubmission,
+  type RequestSubmission,
+} from './request-submission';
 
 export function ServiceRequest({
   page,
@@ -40,16 +45,28 @@ export function ServiceRequest({
   const [review, setReview] = useState(false);
   const [receipt, setReceipt] = useState('');
   const [key, setKey] = useState('');
+  const [timezone, setTimezone] = useState('');
+  const [retryPending, setRetryPending] = useState(false);
+  const pendingSubmission = useRef<RequestSubmission | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    setTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  }, []);
   useEffect(() => {
     if (service && !dialog.current?.open) dialog.current?.showModal();
   }, [service]);
   function select(s: PublicService) {
+    if (pendingSubmission.current) {
+      setService(pendingSubmission.current.serviceSnapshot);
+      setReview(true);
+      return;
+    }
     setService(s);
     setStart('');
     setDate('');
     setAnswers(s.questions.map(() => ''));
     setError('');
+    setSent(false);
     setReview(false);
     setKey(crypto.randomUUID());
     setReceipt('');
@@ -64,7 +81,10 @@ export function ServiceRequest({
       {service && (
         <dialog
           ref={dialog}
-          onCancel={() => setService(null)}
+          onCancel={(event) => {
+            if (busy) event.preventDefault();
+            else setService(null);
+          }}
           className="dt-request-overlay"
           aria-label={`Request ${service.title}`}
         >
@@ -73,6 +93,7 @@ export function ServiceRequest({
               variant="ghost"
               className="dt-text-button"
               type="button"
+              disabled={busy}
               onClick={() => setService(null)}
             >
               ← Back to profile
@@ -102,13 +123,20 @@ export function ServiceRequest({
                 onSubmit={(e) => {
                   e.preventDefault();
                   startTransition(async () => {
-                    const result = await sendRequesterLink(
-                      email,
-                      page.profile.username,
-                      service.id,
-                    );
-                    setError(result.error);
-                    if (!result.error) setSent(true);
+                    setError('');
+                    try {
+                      const result = await sendRequesterLink(
+                        email,
+                        page.profile.username,
+                        service.id,
+                      );
+                      setError(result.error);
+                      if (!result.error) setSent(true);
+                    } catch {
+                      setError(
+                        'We could not confirm email delivery. Check your inbox before retrying.',
+                      );
+                    }
                   });
                 }}
               >
@@ -158,27 +186,37 @@ export function ServiceRequest({
                   }
                   const idempotencyKey = key || crypto.randomUUID();
                   setKey(idempotencyKey);
+                  const submission = retainRequestSubmission(
+                    pendingSubmission.current,
+                    {
+                      serviceId: service.id,
+                      serviceSnapshot: service,
+                      idempotencyKey,
+                      name,
+                      notes,
+                      answers: service.questions.map((_, i) => answers[i] ?? ''),
+                      start,
+                      preferredDate: date,
+                      timezone,
+                      adult,
+                      consent,
+                    },
+                  );
+                  pendingSubmission.current = submission;
+                  setRetryPending(true);
                   startTransition(async () => {
                     setError('');
                     try {
-                      const result = await submitRequest({
-                        serviceId: service.id,
-                        serviceSnapshot: service,
-                        idempotencyKey,
-                        name,
-                        notes,
-                        answers: service.questions.map((_, i) => answers[i] ?? ''),
-                        start,
-                        preferredDate: date,
-                        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                        adult,
-                        consent,
-                      });
+                      const result = await submitRequest(submission);
                       setError(result.error);
+                      if (!isAmbiguousSubmissionResult(result)) {
+                        pendingSubmission.current = null;
+                        setRetryPending(false);
+                      }
                       if (result.id) setReceipt(result.id);
                     } catch {
                       setError(
-                        'The request could not reach Date Tree. Your details are still here—please try again.',
+                        'We could not confirm whether your request was saved. Retry the original request safely, or check Your requests.',
                       );
                     }
                   });
@@ -201,9 +239,10 @@ export function ServiceRequest({
                             {new Intl.DateTimeFormat('en', {
                               dateStyle: 'full',
                               timeStyle: 'short',
+                              timeZone: timezone,
                             }).format(new Date(start))}
                             <br />
-                            {Intl.DateTimeFormat().resolvedOptions().timeZone}
+                            {timezone}
                           </dd>
                         </>
                       )}
@@ -230,7 +269,7 @@ export function ServiceRequest({
                       variant="ghost"
                       type="button"
                       className="dt-text-button"
-                      disabled={busy}
+                      disabled={busy || retryPending}
                       onClick={() => setReview(false)}
                     >
                       Edit details
@@ -250,6 +289,8 @@ export function ServiceRequest({
                         serviceId={service.id}
                         selected={start}
                         onChange={setStart}
+                        onTimezoneChange={setTimezone}
+                        initialTimezone={timezone}
                       />
                     ) : (
                       <Field
@@ -319,6 +360,14 @@ export function ServiceRequest({
                     />
                   </>
                 )}
+                {retryPending && !busy && (
+                  <Notice>
+                    The original details are kept unchanged until we can confirm the
+                    result. Retrying will not create the same request twice. You can
+                    also <Link href="/requests">check Your requests</Link> before
+                    starting again.
+                  </Notice>
+                )}
                 {service.pricing === 'fixed' && (
                   <p className="dt-notice">
                     Date Tree will not charge you. The creator may arrange payment with
@@ -333,9 +382,11 @@ export function ServiceRequest({
                 >
                   {busy
                     ? 'Sending your request…'
-                    : review
-                      ? 'Send request'
-                      : 'Review request →'}
+                    : retryPending
+                      ? 'Retry original request'
+                      : review
+                        ? 'Send request'
+                        : 'Review request →'}
                 </Button>
               </form>
             )}

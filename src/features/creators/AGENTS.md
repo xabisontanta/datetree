@@ -2,15 +2,15 @@
 
 ## Scope
 
-Own creator onboarding, public-profile configuration and publishing, username/slug lifecycle, theme customization, social links, creator settings, and experience creation coordination. Target a focused 2-4 minute onboarding:
+Own creator onboarding, public-profile publishing, username lifecycle, theme customization, social links, creator settings, and service creation. Target a focused 2-4 minute onboarding after account verification:
 
-1. Account
-2. WhatsApp verification
-3. Public profile
-4. First experience
-5. Availability
-6. Preview
-7. Publish
+1. Profile: name, username, bio, optional avatar.
+2. Services: appointments, deliverables, or enquiries.
+3. Availability for appointments; delivery settings otherwise.
+4. Appearance, preview, and publish.
+
+Persist resumable drafts. Do not force repeat account consent or WhatsApp verification
+into this flow. Profile photo, banner, and background are separate optional assets.
 
 ## Data and Safety Rules
 

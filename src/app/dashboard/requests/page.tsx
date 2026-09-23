@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { RequestList } from '@/features/booking/request-list';
 import {
+  groupNotificationStatuses,
   notificationStatusDtoSchema,
   REQUEST_COLUMNS,
   requestDtoSchema,
@@ -32,9 +33,8 @@ export default async function CreatorRequestsPage() {
   const parsedNotifications = notificationStatusDtoSchema
     .array()
     .safeParse(notificationRows);
-  const notifications = Object.groupBy(
+  const notifications = groupNotificationStatuses(
     parsedNotifications.success ? parsedNotifications.data : [],
-    (row) => row.request_id,
   );
   return (
     <main className="dt-app dt-narrow">

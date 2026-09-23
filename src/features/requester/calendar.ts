@@ -11,6 +11,13 @@ export function localDateKey(date: Date, zone: string) {
   return `${value.year}-${value.month}-${value.day}`;
 }
 
+export function restoreCalendarSelection(selected: string, zone: string, now: Date) {
+  const today = localDateKey(now, zone);
+  const instant = new Date(selected);
+  const date = Number.isFinite(instant.getTime()) ? localDateKey(instant, zone) : '';
+  return { today, date, month: (date || today).slice(0, 7) };
+}
+
 export function shiftMonth(month: string, amount: number) {
   const [year, value] = month.split('-').map(Number);
   const date = new Date(Date.UTC(year!, value! - 1 + amount, 1));

@@ -62,7 +62,13 @@ export function PageBuilder({
   }
   async function save(nextStep = step) {
     const next = { ...document, step: nextStep };
-    const result = await savePage(next, revision);
+    let result;
+    try {
+      result = await savePage(next, revision);
+    } catch {
+      setError('Could not reach Date Tree. Your edits are still here. Please retry saving.');
+      return null;
+    }
     if (result.error) {
       setError(result.error);
       return null;
@@ -205,13 +211,15 @@ export function PageBuilder({
                     startTransition(async () => {
                       const rev = await save();
                       if (rev === null) return;
-                      const result = await publishPage(true, rev);
-                      if (result.error) setError(result.error);
-                      else {
-                        setMessage(
-                          'Your page is published. Copy your link below and share it.',
-                        );
-                        router.refresh();
+                      try {
+                        const result = await publishPage(true, rev);
+                        if (result.error) setError(result.error);
+                        else {
+                          setMessage('Your page is published. Copy your link below and share it.');
+                          router.refresh();
+                        }
+                      } catch {
+                        setError('Your draft is saved, but publication could not be checked. Retry publishing.');
                       }
                     })
                   }

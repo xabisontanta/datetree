@@ -1,20 +1,19 @@
-import { z } from 'zod';
+import { availabilityQuerySchema } from '@/services/availability/timezone';
 import { createClient } from '@/lib/supabase/server';
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const input = z
-    .object({
-      service: z.uuid(),
-      month: z.string().regex(/^\d{4}-\d{2}$/),
-    })
-    .safeParse(Object.fromEntries(url.searchParams));
+  const input = availabilityQuerySchema.safeParse(Object.fromEntries(url.searchParams));
   if (!input.success)
-    return Response.json({ error: 'Invalid month.' }, { status: 400 });
+    return Response.json(
+      { error: 'Choose a valid month and timezone.' },
+      { status: 400, headers: { 'Cache-Control': 'no-store' } },
+    );
   const db = await createClient();
-  const { data, error } = await db.rpc('dt_available_dates', {
+  const { data, error } = await db.rpc('dt_available_dates_in_zone', {
     service: input.data.service,
     month_start: `${input.data.month}-01`,
+    visitor_timezone: input.data.timezone,
   });
   return Response.json(
     error

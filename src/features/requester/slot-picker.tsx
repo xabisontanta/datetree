@@ -1,9 +1,10 @@
 'use client';
 import { Button } from '@/components/ui/button';
 
-import { useEffect, useMemo, useState } from 'react';
-import { Notice } from '@/components/editor-fields';
-import { localDateKey, monthCells, shiftMonth } from './calendar';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Notice, Select } from '@/components/editor-fields';
+import { timezoneOptions } from '@/services/availability/timezone';
+import { localDateKey, monthCells, restoreCalendarSelection, shiftMonth } from './calendar';
 
 type Slot = { start: string; end: string };
 const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -12,11 +13,16 @@ export function SlotPicker({
   serviceId,
   selected,
   onChange,
+  onTimezoneChange,
+  initialTimezone,
 }: {
   serviceId: string;
   selected: string;
   onChange: (value: string) => void;
+  onTimezoneChange?: (zone: string) => void;
+  initialTimezone?: string;
 }) {
+  const initialSelection = useRef({ selected, timezone: initialTimezone });
   const [date, setDate] = useState('');
   const [zone, setZone] = useState('UTC');
   const [month, setMonth] = useState('');
@@ -28,24 +34,34 @@ export function SlotPicker({
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const visitorZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const current = localDateKey(new Date(), visitorZone);
+    const visitorZone =
+      initialSelection.current.timezone ||
+      Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const restored = restoreCalendarSelection(
+      initialSelection.current.selected,
+      visitorZone,
+      new Date(),
+    );
     setZone(visitorZone);
-    setToday(current);
-    setMonth(current.slice(0, 7));
-  }, []);
+    onTimezoneChange?.(visitorZone);
+    setToday(restored.today);
+    setDate(restored.date);
+    setMonth(restored.month);
+  }, [onTimezoneChange]);
 
   useEffect(() => {
-    if (!month) return;
+    if (!month || !today) return;
     const abort = new AbortController();
     setLoadingDates(true);
     setError('');
-    fetch(`/api/availability?service=${serviceId}&month=${month}`, {
-      signal: abort.signal,
-      cache: 'no-store',
-    })
+    setAvailable([]);
+    fetch(
+      `/api/availability?service=${serviceId}&month=${month}&timezone=${encodeURIComponent(zone)}`,
+      { signal: abort.signal, cache: 'no-store' },
+    )
       .then(async (response) => {
         const data = (await response.json()) as { dates?: string[]; error?: string };
+        if (abort.signal.aborted) return;
         if (!response.ok)
           throw new Error(data.error || 'Available dates could not be loaded.');
         setAvailable(data.dates ?? []);
@@ -66,11 +82,12 @@ export function SlotPicker({
         if (!abort.signal.aborted) setLoadingDates(false);
       });
     return () => abort.abort();
-  }, [date, month, onChange, serviceId]);
+  }, [date, month, onChange, serviceId, today, zone]);
 
   useEffect(() => {
     if (!date) {
       setSlots([]);
+      setLoading(false);
       return;
     }
     const abort = new AbortController();
@@ -94,6 +111,7 @@ export function SlotPicker({
       }),
     )
       .then((groups) => {
+        if (abort.signal.aborted) return;
         const unique = new Map(
           groups
             .flat()
@@ -117,6 +135,7 @@ export function SlotPicker({
   }, [date, serviceId, zone]);
 
   const availableSet = useMemo(() => new Set(available), [available]);
+  const zones = useMemo(() => timezoneOptions(zone), [zone]);
   const cells = useMemo(() => (month ? monthCells(month) : []), [month]);
   const monthTitle = month
     ? new Intl.DateTimeFormat('en', {
@@ -131,6 +150,26 @@ export function SlotPicker({
 
   return (
     <div className="dt-stack">
+      <Select
+        label="Your timezone"
+        value={zone}
+        onChange={(e) => {
+          const next = e.target.value;
+          const current = localDateKey(new Date(), next);
+          setZone(next);
+          setToday(current);
+          setMonth(current.slice(0, 7));
+          setDate('');
+          onChange('');
+          onTimezoneChange?.(next);
+        }}
+      >
+        {zones.map((value) => (
+          <option key={value} value={value}>
+            {value.replaceAll('_', ' ')}
+          </option>
+        ))}
+      </Select>
       <div className="dt-calendar" aria-label="Choose an available date">
         <div className="dt-calendar-header">
           <Button

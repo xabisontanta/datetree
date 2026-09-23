@@ -183,6 +183,10 @@ export type Database = {
         Args: { service: string; from_date: string };
         Returns: { start_at: string; end_at: string }[];
       };
+      dt_available_dates_in_zone: {
+        Args: { service: string; month_start: string; visitor_timezone: string };
+        Returns: { available_date: string }[];
+      };
       dt_available_dates: {
         Args: { service: string; month_start: string };
         Returns: { available_date: string }[];

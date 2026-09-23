@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-Date Tree is a mobile-first social booking app. Routes and server actions live in `src/app/`; reusable presentation belongs in `src/components/`; feature rules belong in `src/features/`; and Supabase clients and generated database types live in `src/lib/supabase/`. Database migrations and pgTAP checks are under `supabase/migrations/` and `supabase/tests/`. Cross-cutting tests live in `tests/`, while architecture and security decisions are documented in `docs/`.
+Date Tree is a mobile-first service-profile and request app for coaches, businesses, freelancers, and creators. Routes and server actions live in `src/app/`; reusable presentation belongs in `src/components/`; feature rules belong in `src/features/`; and Supabase clients and generated database types live in `src/lib/supabase/`. Database migrations and pgTAP checks are under `supabase/migrations/` and `supabase/tests/`. Cross-cutting tests live in `tests/`, while architecture and security decisions are documented in `docs/`.
 
 Read the nearest nested `AGENTS.md` before changing a directory. Keep dependencies flowing from UI to domain services to infrastructure, never the reverse.
 

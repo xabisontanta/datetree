@@ -2,7 +2,10 @@
 
 ## System Shape
 
-The application uses Next.js and React with strict TypeScript and Tailwind CSS. Supabase provides PostgreSQL, Auth, and RLS. Paystack and Twilio are external infrastructure providers. Business rules remain provider-independent.
+The application uses Vinext's Next-compatible App Router and React with strict
+TypeScript and Tailwind CSS. Supabase Zap provides PostgreSQL, Auth, Storage, and RLS.
+Sites deploys the production Cloudflare Worker. Payment and notification providers
+remain behind service boundaries; see `service-pages.md` for connected capabilities.
 
 ```text
 Next.js UI
@@ -63,4 +66,12 @@ Commit authoritative booking/payment state before attempting notifications. Use 
 
 ## Configuration and Deployment
 
-No runtime/toolchain exists yet. When introduced, pin dependencies and commit lockfiles. Document environment-variable names in `.env.example` without values, distinguish browser-safe publishable configuration from server secrets, and add health, migration, rollback, and observability procedures before production launch.
+Dependencies and lockfiles are pinned. `npm run check` validates types, lint, Vitest,
+and the production build. `.openai/hosting.json` identifies the existing Sites project;
+publish a bundle built from the exact pushed source commit and preserve its audience.
+Keep environment names in `.env.example` without secrets. Never commit `.env.local`,
+credentials, disposable account details, or build/test output. Shared Zap resources
+belonging to other applications are out of scope.
+
+RSC boundaries require plain serializable DTOs. In particular, `Object.groupBy`
+produces null-prototype objects that must not be passed to client components.

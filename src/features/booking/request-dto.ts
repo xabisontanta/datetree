@@ -31,6 +31,17 @@ export const notificationStatusDtoSchema = z.object({
 });
 export type NotificationStatusDTO = z.infer<typeof notificationStatusDtoSchema>;
 
+/** RSC props must be plain objects; Object.groupBy returns a null prototype. */
+export function groupNotificationStatuses(statuses: NotificationStatusDTO[]) {
+  const groups = new Map<string, NotificationStatusDTO[]>();
+  for (const status of statuses) {
+    const group = groups.get(status.request_id) ?? [];
+    group.push(status);
+    groups.set(status.request_id, group);
+  }
+  return Object.fromEntries(groups);
+}
+
 export function latestNotificationStatusesByChannel(statuses: NotificationStatusDTO[]) {
   const latest = new Map<NotificationStatusDTO['channel'], NotificationStatusDTO>();
 
