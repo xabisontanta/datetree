@@ -14,6 +14,7 @@ import {
   type RequestDTO,
 } from './request-dto';
 import { SlotPicker } from '@/features/requester/slot-picker';
+import { runInboxAction } from './inbox-action';
 
 export function RequestList({
   requests,
@@ -36,24 +37,26 @@ export function RequestList({
   const router = useRouter();
   function act(r: RequestDTO, operation: string, time?: string) {
     startTransition(async () => {
-      const result = await transitionRequest({
+      setError('');
+      const result = await runInboxAction(() => transitionRequest({
         id: r.id,
         version: r.version,
         operation,
         ...(time ? { start: time } : {}),
-      });
+      }));
       setError(result.error);
       if (!result.error) {
         setCounter('');
-        router.refresh();
       }
+      if (result.refresh) router.refresh();
     });
   }
   function retryNotifications(requestId: string) {
     startTransition(async () => {
-      const result = await retryRequestNotifications(requestId);
+      setError('');
+      const result = await runInboxAction(() => retryRequestNotifications(requestId));
       setError(result.error);
-      if (!result.error) router.refresh();
+      if (result.refresh) router.refresh();
     });
   }
   return (
@@ -169,8 +172,9 @@ export function RequestList({
             )}
             {r.snapshot.pricing === 'fixed' && (
               <small>
-                Date Tree has not collected this payment. Arrange payment directly with
-                the client until online payments are connected.
+                {['PENDING_CREATOR', 'COUNTER_PROPOSED'].includes(r.status)
+                  ? 'Online payments are not connected. This fixed-price request cannot be accepted or confirmed yet.'
+                  : 'Date Tree has not collected or verified payment for this request. An earlier manual confirmation is not proof of payment.'}
               </small>
             )}
             {notifications[r.id]?.length ? (
@@ -210,7 +214,7 @@ export function RequestList({
                   variant="ghost"
                   type="button"
                   className="dt-button"
-                  disabled={busy}
+                  disabled={busy || r.snapshot.pricing === 'fixed'}
                   onClick={() => act(r, 'accept')}
                 >
                   Accept request
@@ -249,7 +253,7 @@ export function RequestList({
                   variant="ghost"
                   type="button"
                   className="dt-button"
-                  disabled={busy}
+                  disabled={busy || r.snapshot.pricing === 'fixed'}
                   onClick={() => act(r, 'accept_counter')}
                 >
                   Accept proposed time

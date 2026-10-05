@@ -40,7 +40,7 @@ Pending/countered requests do not reserve time. An accepted appointment blocks t
 creator's whole local calendar day; unavailable dates are returned without a reason or
 client data. Acceptance locks the creator row and the database constraint prevents
 conflicting reservations across services.
-Scheduled, deliverable and enquiry acceptance use canonical `CONFIRMED`, with
+Free scheduled, deliverable and quote-enquiry acceptance use canonical `CONFIRMED`, with
 type-specific UI labels. Free work can be cancelled by either party before completion;
 creators mark completion, and appointments must have ended. Counters require requester
 acceptance. State changes are audited; notification intent is persisted separately.
@@ -48,9 +48,10 @@ acceptance. State changes are audited; notification intent is persisted separate
 ## Explicit limitations
 
 Payment processing and status notifications are not connected. Fixed-price requests
-can be accepted, but payment must be arranged directly and Date Tree never represents
-it as collected. There is no fake payment or notification success. The inbox is the
-source of status.
+can be received, but acceptance/confirmation is disabled until a verified payment
+adapter is connected. Database enforcement covers all three service types and counter
+acceptance; older manual confirmations remain unchanged. There is no fake payment or
+notification success. The inbox is the source of status.
 Auth email delivery still depends on the shared project's SMTP limits and redirect
 configuration. Do not alter unrelated Zap application tables or global auth policies.
 Group sessions, external calendar sync, payouts, subscriptions and custom domains are

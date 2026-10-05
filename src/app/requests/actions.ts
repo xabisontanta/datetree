@@ -78,6 +78,7 @@ export async function transitionRequest(input: unknown) {
   });
   if (!error) await dispatchRequestNotifications(db, p.data.id);
   revalidatePath('/dashboard');
+  revalidatePath('/dashboard/requests');
   revalidatePath('/requests');
   return {
     error: error

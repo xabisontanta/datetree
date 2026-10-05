@@ -184,8 +184,9 @@ export function ServiceEditor({
             </div>
             {s.pricing === 'fixed' && (
               <p className="dt-notice">
-                You can show prices and accept requests. Date Tree does not collect the
-                payment yet, so arrange it directly with your client.
+                You can show prices and receive requests. Acceptance is disabled until
+                verified online payments are connected. Use free services or quote
+                enquiries for now.
               </p>
             )}
             {s.kind === 'scheduled' && (

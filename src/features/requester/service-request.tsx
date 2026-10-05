@@ -370,8 +370,9 @@ export function ServiceRequest({
                 )}
                 {service.pricing === 'fixed' && (
                   <p className="dt-notice">
-                    Date Tree will not charge you. The creator may arrange payment with
-                    you directly until online payments are connected.
+                    Online payments are not connected. Your request can be reviewed,
+                    but fixed-price services cannot be accepted or confirmed yet. You
+                    will not be charged.
                   </p>
                 )}
                 <Button
