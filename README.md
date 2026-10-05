@@ -63,6 +63,15 @@ provider acceptance is tracked as `accepted`, not falsely reported as delivered.
 
 Account, magic-link, and password-reset email still use Supabase Auth.
 
+## Production configuration
+
+Vinext embeds `NEXT_PUBLIC_*` values when building. Configure
+`NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_SUPABASE_URL`, and
+`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` in the build environment or ignored
+`.env.production.local`, using the same values as the hosted Site. Hosted runtime
+variables alone cannot repair an artifact built with empty values. The production
+build rejects missing configuration and server secrets used as browser keys.
+
 ## Product boundaries
 
 Implemented now: responsive authentication, creator page building and publishing,
