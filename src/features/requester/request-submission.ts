@@ -1,4 +1,15 @@
 import type { RequestInput } from '@/features/booking/request-schema';
+import type { PublicService } from '@/features/creators/page-schema';
+
+/** A different service must never inherit the previous service's brief or slot. */
+export function freshServiceRequestDetails(service: Pick<PublicService, 'questions'>) {
+  return {
+    notes: '',
+    answers: service.questions.map(() => ''),
+    start: '',
+    preferredDate: '',
+  };
+}
 
 export type RequestSubmission = Omit<RequestInput, 'adult' | 'consent'> & {
   adult: boolean;

@@ -14,6 +14,7 @@ import {
 import { sendRequesterLink, submitRequest } from '@/app/requests/actions';
 import { SlotPicker } from './slot-picker';
 import {
+  freshServiceRequestDetails,
   isAmbiguousSubmissionResult,
   retainRequestSubmission,
   type RequestSubmission,
@@ -61,10 +62,12 @@ export function ServiceRequest({
       setReview(true);
       return;
     }
+    const details = freshServiceRequestDetails(s);
     setService(s);
-    setStart('');
-    setDate('');
-    setAnswers(s.questions.map(() => ''));
+    setNotes(details.notes);
+    setStart(details.start);
+    setDate(details.preferredDate);
+    setAnswers(details.answers);
     setError('');
     setSent(false);
     setReview(false);

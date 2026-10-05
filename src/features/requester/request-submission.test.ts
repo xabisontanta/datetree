@@ -1,9 +1,41 @@
 import { describe, expect, it } from 'vitest';
 import {
+  freshServiceRequestDetails,
   isAmbiguousSubmissionResult,
   retainRequestSubmission,
   type RequestSubmission,
 } from './request-submission';
+
+describe('switching services', () => {
+  it('starts with a fresh brief, answers and scheduling details', () => {
+    const first = freshServiceRequestDetails({
+      questions: [{ label: 'Recipient name?', required: true }],
+    });
+    first.notes = 'Birthday brief';
+    first.answers[0] = 'Test recipient';
+    first.start = '2026-10-12T09:00:00Z';
+    first.preferredDate = '2026-10-12';
+
+    expect(freshServiceRequestDetails({ questions: [] })).toEqual({
+      notes: '',
+      answers: [],
+      start: '',
+      preferredDate: '',
+    });
+  });
+
+  it('creates independent empty answers for the selected service', () => {
+    const service = {
+      questions: [
+        { label: 'Campaign?', required: true },
+        { label: 'Channels?', required: false },
+      ],
+    };
+    const first = freshServiceRequestDetails(service);
+    first.answers[0] = 'Old campaign';
+    expect(freshServiceRequestDetails(service).answers).toEqual(['', '']);
+  });
+});
 
 function draft(): RequestSubmission {
   return {
