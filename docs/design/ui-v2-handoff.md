@@ -12,8 +12,12 @@ input for review, not a replacement for current product requirements.
 
 The notification implementation is on `feature/reliable-notifications`. After its
 checks and checkpoint, `develop` and `design/ui-v2` start at that verified commit.
-Use the separate `design/ui-v2` checkout supplied by Codex, not the original dirty
-checkout. Do not reset, force-push, switch another agent's branch, or alter `main`.
+Use this prepared, dependency-installed checkout:
+`C:\Users\Xabis\.codex\worktrees\date-tree-ui-v2\date tree`.
+It is on `design/ui-v2`, based on the tested notification release `f97af43` plus
+compatible verification/index follow-up commits. Check `git status` and the
+branch before editing; do not use the original dirty Downloads checkout.
+Do not reset, force-push, switch another agent's branch, or alter `main`.
 Commit small UI changes and provide the branch, commit IDs, changed files,
 screenshots, test results and unresolved contract change requests. Codex reviews
 them against the release baseline before integration.
@@ -58,3 +62,8 @@ Run `npm run format:check` and `npm run check`; report any unavailable environme
 honestly. Include mobile/desktop, keyboard/focus and empty/error-state screenshots.
 Never call a mocked notification or accepted API response actual inbox delivery.
 Stop for review when Phase A is ready; leave integration and publishing to Codex.
+
+The build requires public Supabase/app values. For compile-only checks, use the
+synthetic public fixtures from `.github/workflows/verify.yml`; they cannot authenticate
+or deliver requests. Do not copy production secrets or change `.env`/hosting.
+Ask Codex for an approved interactive preview if browser validation needs a backend.

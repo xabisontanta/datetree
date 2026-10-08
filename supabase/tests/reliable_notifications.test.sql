@@ -35,6 +35,10 @@ insert into dt_test_results select ok(not has_column_privilege('authenticated','
 insert into dt_test_results select ok(not has_table_privilege('authenticated','dt_private.contact_preferences','SELECT'),'preferences are not directly readable');
 insert into dt_test_results select ok(not has_function_privilege('authenticated','public.dt_reserve_whatsapp_verification(uuid,text,uuid)','EXECUTE'),'browser cannot invoke privileged verification allocator');
 insert into dt_test_results select ok(not has_function_privilege('anon','public.dt_delivery_callback(text,text,text,text,timestamptz,bigint,uuid)','EXECUTE'),'browser cannot forge delivery callback');
+insert into dt_test_results select has_index('dt_private','activity_reads','dt_activity_reads_request_idx',
+  array['request_id'],'activity read request foreign key has a covering index');
+insert into dt_test_results select has_index('dt_private','notification_deliveries','dt_notification_delivery_recipient_idx',
+  array['recipient_id'],'delivery recipient foreign key has a covering index');
 select pg_temp.login(2);
 set local role authenticated;
 insert into dt_test_results select throws_ok($$select public.dt_submit_request(pg_temp.payload(11)-'contactSharingConsent')$$,'P0001',null,'submission requires explicit contact sharing consent');

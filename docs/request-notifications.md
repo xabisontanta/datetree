@@ -92,6 +92,10 @@ Monitor redacted queue age/status/attempt counts, bounce/template errors and
 `notification_worker_health.last_poll_at`. Check cron job-run history and pg_net
 response codes without returning headers or secrets. An operator must reconcile
 uncertain sends using provider records; never bulk reset them to queued.
+When both channels are OFF the scheduler intentionally skips the HTTP poll;
+`last_poll_at` is not expected to advance. Cron success and a transport probe do
+not demonstrate delivery or retry behavior. See `verification-2026-10-08.md` for
+the deployed worker/Vault setup and the remaining provider launch gates.
 
 Run `npm run check`, all pgTAP suites and browser submission/action/inbox tests.
 Live acceptance also requires actual received receipt + creator email + status
