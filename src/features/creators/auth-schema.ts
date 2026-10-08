@@ -25,13 +25,17 @@ export const signUpSchema = z.object({
   password: newPassword,
   whatsappNumber: z
     .string()
-    .regex(E164_PHONE_PATTERN, 'Use international format, for example +27821234567.'),
+    .regex(E164_PHONE_PATTERN, 'Use international format, for example +27821234567.')
+    .or(z.literal(''))
+    .nullish()
+    .transform((value) => value ?? ''),
   isAdult: z.literal('on', { error: 'Confirm that you are 18 or older.' }),
   acceptsTerms: z.literal('on', { error: 'Accept the Terms to continue.' }),
   acceptsPrivacy: z.literal('on', { error: 'Accept the Privacy Policy to continue.' }),
-  whatsappConsent: z.literal('on', {
-    error: 'Consent to WhatsApp booking notifications is required.',
-  }),
+  whatsappConsent: z
+    .union([z.literal('on'), z.literal(''), z.null()])
+    .default('')
+    .transform((value) => value === 'on'),
 });
 
 export const requestPasswordResetSchema = z.object({ email });

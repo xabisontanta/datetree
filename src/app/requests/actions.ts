@@ -5,6 +5,50 @@ import { createClient } from '@/lib/supabase/server';
 import { requestSchema, transitionSchema } from '@/features/booking/request-schema';
 import type { Json } from '@/lib/supabase/database.types';
 import { dispatchRequestNotifications } from '@/services/notifications/dispatch';
+import { safeAuthDestination } from '@/features/creators/auth-destination';
+
+export async function sendInboxSignInLink(email: string, destination: string) {
+  const parsed = z.email().max(254).safeParse(email.trim().toLowerCase());
+  const next = safeAuthDestination(destination, '/requests');
+  if (
+    !parsed.success ||
+    (!/^\/requests(?:\/|$|\?)/.test(next) && next !== '/settings/notifications')
+  )
+    return { error: 'Enter a valid email and destination.' };
+  const db = await createClient();
+  const origin = process.env.NEXT_PUBLIC_APP_URL;
+  if (!origin) return { error: 'Email verification is not configured.' };
+  const { error } = await db.auth.signInWithOtp({
+    email: parsed.data,
+    options: {
+      emailRedirectTo: `${origin}/auth/callback?next=${encodeURIComponent(next)}`,
+    },
+  });
+  return { error: error ? 'Could not send the link. Wait before retrying.' : '' };
+}
+
+export async function markRequestActivityRead(requestId: string, throughEvent: number) {
+  if (!z.uuid().safeParse(requestId).success || !Number.isSafeInteger(throughEvent))
+    return;
+  const db = await createClient();
+  const { error } = await db.rpc('dt_mark_activity_read', {
+    rid: requestId,
+    through_event: throughEvent,
+  });
+  if (error) return;
+  revalidatePath('/dashboard/requests');
+  revalidatePath('/requests');
+  revalidatePath(`/dashboard/requests/${requestId}`);
+  revalidatePath(`/requests/${requestId}`);
+}
+
+export async function revokeRequestContact(requestId: string) {
+  if (!z.uuid().safeParse(requestId).success) return { error: 'Invalid request.' };
+  const db = await createClient();
+  const { error } = await db.rpc('dt_revoke_request_contact', { rid: requestId });
+  revalidatePath(`/requests/${requestId}`);
+  return { error: error ? 'Could not stop contact sharing.' : '' };
+}
 
 export async function sendRequesterLink(
   email: string,
@@ -80,6 +124,8 @@ export async function transitionRequest(input: unknown) {
   revalidatePath('/dashboard');
   revalidatePath('/dashboard/requests');
   revalidatePath('/requests');
+  revalidatePath(`/dashboard/requests/${p.data.id}`);
+  revalidatePath(`/requests/${p.data.id}`);
   return {
     error: error
       ? error.code === 'P0001'

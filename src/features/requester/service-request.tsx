@@ -5,14 +5,13 @@ import Link from 'next/link';
 
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { PublicPageView, serviceSummary } from '@/components/public-page';
-import { Field, Notice, TextArea, Toggle } from '@/components/editor-fields';
-import {
-  priceLabel,
-  type PublicPage,
-  type PublicService,
-} from '@/features/creators/page-schema';
+import { Field, Notice, Select, TextArea, Toggle } from '@/components/editor-fields';
+import { loadContactSettings } from '@/app/settings/notifications/actions';
+import type { ContactSettings } from '@/services/notifications/contact-settings';
+import { type PublicPage, type PublicService } from '@/features/creators/page-schema';
 import { sendRequesterLink, submitRequest } from '@/app/requests/actions';
 import { SlotPicker } from './slot-picker';
+import { contactProofChanged, whatsappPermissionRevoked } from './contact-selection';
 import {
   freshServiceRequestDetails,
   isAmbiguousSubmissionResult,
@@ -43,16 +42,40 @@ export function ServiceRequest({
   const [date, setDate] = useState('');
   const [adult, setAdult] = useState(false);
   const [consent, setConsent] = useState(false);
+  const [contactSharingConsent, setContactSharingConsent] = useState(false);
+  const [preferredContact, setPreferredContact] = useState<'email' | 'whatsapp'>(
+    'email',
+  );
+  const [whatsappNotificationConsent, setWhatsAppNotificationConsent] = useState(false);
+  const [contactSettings, setContactSettings] = useState<ContactSettings | null>(null);
   const [review, setReview] = useState(false);
   const [receipt, setReceipt] = useState('');
   const [key, setKey] = useState('');
   const [timezone, setTimezone] = useState('');
   const [retryPending, setRetryPending] = useState(false);
   const pendingSubmission = useRef<RequestSubmission | null>(null);
+  const previousContacts = useRef<ContactSettings | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     setTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone);
-  }, []);
+    if (verified)
+      void loadContactSettings()
+        .then(setContactSettings)
+        .catch(() => {});
+  }, [verified]);
+  useEffect(() => {
+    if (contactProofChanged(previousContacts.current, contactSettings)) {
+      setContactSharingConsent(false);
+      setWhatsAppNotificationConsent(false);
+    }
+    if (!contactSettings?.whatsappVerified) {
+      setPreferredContact('email');
+      setWhatsAppNotificationConsent(false);
+    } else if (whatsappPermissionRevoked(previousContacts.current, contactSettings)) {
+      setWhatsAppNotificationConsent(false);
+    }
+    previousContacts.current = contactSettings;
+  }, [contactSettings]);
   useEffect(() => {
     if (service && !dialog.current?.open) dialog.current?.showModal();
   }, [service]);
@@ -71,6 +94,8 @@ export function ServiceRequest({
     setError('');
     setSent(false);
     setReview(false);
+    setContactSharingConsent(false);
+    setWhatsAppNotificationConsent(false);
     setKey(crypto.randomUUID());
     setReceipt('');
   }
@@ -103,16 +128,15 @@ export function ServiceRequest({
             </Button>
             <p className="eyebrow">{page.profile.displayName}</p>
             <h2>{receipt ? 'Request sent.' : service.title}</h2>
-            <p className="dt-muted">
-              {serviceSummary(service)} · {priceLabel(service)}
-            </p>
+            <p className="dt-muted">{serviceSummary(service)}</p>
             {receipt ? (
               <div className="dt-stack">
                 <Notice>
-                  Your request is saved. The creator must accept before anything is
-                  confirmed. No payment has been taken.
+                  Your request for {service.title} has been sent to{' '}
+                  {page.profile.displayName}. Awaiting their response. We’ll notify you
+                  when they accept or decline.
                 </Notice>
-                <Link className="dt-button" href="/requests">
+                <Link className="dt-button" href={`/requests/${receipt}`}>
                   View request status →
                 </Link>
                 <small>
@@ -174,7 +198,10 @@ export function ServiceRequest({
                     verification.
                   </Notice>
                 )}
-                <Link className="dt-text-button" href="/auth/sign-in">
+                <Link
+                  className="dt-text-button"
+                  href={`/auth/sign-in?next=${encodeURIComponent(`/${page.profile.username}?service=${service.id}`)}`}
+                >
                   Already have an account? Sign in
                 </Link>
               </form>
@@ -203,6 +230,9 @@ export function ServiceRequest({
                       timezone,
                       adult,
                       consent,
+                      preferredContact,
+                      contactSharingConsent,
+                      whatsappNotificationConsent,
                     },
                   );
                   pendingSubmission.current = submission;
@@ -232,8 +262,13 @@ export function ServiceRequest({
                       <dt>Your name</dt>
                       <dd>{name}</dd>
                       <dt>Service</dt>
+                      <dd>{service.title}</dd>
+                      <dt>Shared contact</dt>
                       <dd>
-                        {service.title} · {priceLabel(service)}
+                        {preferredContact === 'email'
+                          ? 'Verified email'
+                          : 'Verified WhatsApp'}{' '}
+                        · only this contact is shared.
                       </dd>
                       {start && (
                         <>
@@ -350,6 +385,58 @@ export function ServiceRequest({
                       documents or payment details.
                     </small>
                     <Toggle
+                      label={`Share my verified ${preferredContact === 'email' ? 'email' : 'WhatsApp number'} with this creator so they can contact me about this request.`}
+                      checked={contactSharingConsent}
+                      required
+                      onChange={(e) => setContactSharingConsent(e.target.checked)}
+                    />
+                    <Select
+                      label="Preferred shared contact"
+                      value={preferredContact}
+                      onChange={(e) => {
+                        setPreferredContact(e.target.value as 'email' | 'whatsapp');
+                        setContactSharingConsent(false);
+                      }}
+                    >
+                      <option value="email">Verified email</option>
+                      {contactSettings?.whatsappVerified && (
+                        <option value="whatsapp">Verified WhatsApp</option>
+                      )}
+                    </Select>
+                    {contactSettings && (
+                      <small>
+                        {preferredContact === 'email'
+                          ? contactSettings.email
+                          : contactSettings.whatsappNumber}
+                      </small>
+                    )}
+                    {contactSettings?.whatsappVerified ? (
+                      <Toggle
+                        label="Also send updates about this request to my verified WhatsApp number. I can reply STOP."
+                        checked={whatsappNotificationConsent}
+                        onChange={(e) =>
+                          setWhatsAppNotificationConsent(e.target.checked)
+                        }
+                      />
+                    ) : (
+                      <>
+                        <Link href="/settings/notifications" target="_blank">
+                          Optional: verify WhatsApp in notification settings
+                        </Link>
+                        <Button
+                          variant="ghost"
+                          type="button"
+                          onClick={() => {
+                            void loadContactSettings()
+                              .then(setContactSettings)
+                              .catch(() => {});
+                          }}
+                        >
+                          Refresh verified contacts
+                        </Button>
+                      </>
+                    )}
+                    <Toggle
                       label="I confirm that I am 18 or older."
                       checked={adult}
                       required
@@ -371,13 +458,10 @@ export function ServiceRequest({
                     starting again.
                   </Notice>
                 )}
-                {service.pricing === 'fixed' && (
-                  <p className="dt-notice">
-                    Online payments are not connected. Your request can be reviewed,
-                    but fixed-price services cannot be accepted or confirmed yet. You
-                    will not be charged.
-                  </p>
-                )}
+                <p className="dt-muted">
+                  Any fees or other arrangements are discussed privately. Date Tree does
+                  not process payments.
+                </p>
                 <Button
                   variant="ghost"
                   className="dt-button"

@@ -19,10 +19,10 @@ create function pg_temp.document() returns jsonb language sql immutable as $doc$
 $doc$;
 create function pg_temp.payload(service_number int, key_number int, at_time text default '10:00', day_offset int default 1) returns jsonb language sql as $$
   select jsonb_build_object('serviceId',pg_temp.sid(service_number),'idempotencyKey',('12000000-0000-4000-8000-'||lpad(key_number::text,12,'0'))::uuid,
-    'serviceSnapshot',(pg_temp.document()->'services'->(service_number-1))-'privateDetails',
+    'serviceSnapshot',(pg_temp.document()->'services'->(service_number-1))-array['privateDetails','pricing','amount','currency'],
     'name','Test client','notes','A private test note','answers','[]'::jsonb,
     'start',case when service_number in (1,2,5) then ((current_date+day_offset)+at_time::time)::timestamp at time zone 'UTC' else null end,
-    'preferredDate','','timezone','UTC','adult',true,'consent',true)
+    'preferredDate','','timezone','UTC','adult',true,'consent',true,'preferredContact','email','contactSharingConsent',true,'whatsappNotificationConsent',false)
 $$;
 insert into auth.users(id,email,email_confirmed_at,raw_user_meta_data) select pg_temp.uid(n),'dt-transaction-test-'||n||'@example.test',now(),'{}'::jsonb from generate_series(1,4) n;
 insert into auth.sessions(id,user_id,created_at,updated_at) select pg_temp.uid(n),pg_temp.uid(n),now(),now() from generate_series(1,4) n;
@@ -174,6 +174,11 @@ select set_config(
   ),
   true
 );
+select set_config('dt.lease_request_id',(select id::text from public.dt_requests where service_id=pg_temp.sid(1)),true);
+-- Isolated activation and fixture promotion roll back; production backlog is never promoted.
+update dt_private.notification_channels set enabled=true,activated_at=now()-interval '1 minute' where channel='email';
+update dt_private.notification_deliveries set status='queued'
+where id=current_setting('dt.lease_delivery_id')::bigint;
 update dt_private.notification_deliveries
 set status='accepted'
 where request_id=(select id from public.dt_requests where service_id=pg_temp.sid(1))
@@ -197,7 +202,7 @@ select set_config(
       'attempts',attempts
     )::text
     from public.dt_claim_notification_deliveries(
-      (select id from public.dt_requests where service_id=pg_temp.sid(1)),
+      current_setting('dt.lease_request_id')::uuid,
       pg_temp.uid(2),
       array['email'],
       1
@@ -213,7 +218,7 @@ insert into dt_test_results select is(
   (
     select count(*)::int
     from public.dt_claim_notification_deliveries(
-      (select id from public.dt_requests where service_id=pg_temp.sid(1)),
+      current_setting('dt.lease_request_id')::uuid,
       pg_temp.uid(2),
       array['email'],
       1
@@ -237,7 +242,7 @@ select set_config(
       'attempts',attempts
     )::text
     from public.dt_claim_notification_deliveries(
-      (select id from public.dt_requests where service_id=pg_temp.sid(1)),
+      current_setting('dt.lease_request_id')::uuid,
       pg_temp.uid(2),
       array['email'],
       1
@@ -319,8 +324,8 @@ insert into dt_test_results select throws_ok($$select public.dt_transition_reque
 select public.dt_transition_request((select id from public.dt_requests where service_id=pg_temp.sid(4)),'accept',1);
 insert into dt_test_results select ok((select bool_and(start_at is null and reserved_from is null) from public.dt_requests where service_id in (pg_temp.sid(3),pg_temp.sid(4))),'deliveries and enquiries never occupy appointment slots');
 insert into dt_test_results select ok(exists(select 1 from public.dt_available_slots(pg_temp.sid(1),current_date+2) where start_at=((current_date+2)+time '16:00') at time zone 'UTC'),'accepted delivery does not hide appointment availability');
-insert into dt_test_results select throws_ok($$select public.dt_transition_request((select id from public.dt_requests where service_id=pg_temp.sid(5)),'accept',1)$$,'P0001','Online payments are not connected. Fixed-price requests cannot be accepted yet.','fixed-price acceptance requires a connected verified payment adapter');
-insert into dt_test_results select is((select status from public.dt_requests where service_id=pg_temp.sid(5)),'PENDING_CREATOR','unconfigured payments leave requests pending, not confirmed');
+insert into dt_test_results select ok((select not(snapshot ? 'pricing') and not(snapshot ? 'amount') from public.dt_requests where service_id=pg_temp.sid(5)),'new requests do not snapshot obsolete public prices');
+insert into dt_test_results select is((select status from public.dt_requests where service_id=pg_temp.sid(5)),'PENDING_CREATOR','requests remain pending until a participant explicitly accepts');
 select public.dt_save_page(jsonb_set(pg_temp.document(),'{availability,windows}','[]'),1);
 insert into dt_test_results select ok(exists(select 1 from public.dt_available_slots(pg_temp.sid(1),current_date+4)),'saving availability draft does not affect live slots');
 update public.profiles_private set requests_paused_at=now() where id=pg_temp.uid(1);
@@ -474,8 +479,8 @@ select public.dt_transition_request(current_setting('dt.test_paid_id')::uuid,'co
 reset role;
 select pg_temp.login(2);
 set local role authenticated;
-insert into dt_test_results select throws_ok($$select public.dt_transition_request(current_setting('dt.test_paid_id')::uuid,'accept_counter',2)$$,'P0001','Online payments are not connected. Fixed-price requests cannot be accepted yet.','fixed-price counter acceptance cannot bypass payment configuration');
-insert into dt_test_results select ok((select status='COUNTER_PROPOSED' and version=2 and reserved_from is null and accepted_at is null from public.dt_requests where id=current_setting('dt.test_paid_id')::uuid),'blocked paid counter acceptance is atomic and remains unreserved');
+insert into dt_test_results select lives_ok($$select public.dt_transition_request(current_setting('dt.test_paid_id')::uuid,'accept_counter',2)$$,'external arrangement permits counter acceptance');
+insert into dt_test_results select ok((select status='CONFIRMED' and version=3 and reserved_from is not null and accepted_at is not null from public.dt_requests where id=current_setting('dt.test_paid_id')::uuid),'counter acceptance reserves atomically without claiming payment');
 reset role;
 select pg_temp.login(1);
 set local role authenticated;
@@ -491,8 +496,8 @@ select set_config('dt.test_paid_delivery_id',public.dt_submit_request(
 reset role;
 select pg_temp.login(1);
 set local role authenticated;
-insert into dt_test_results select throws_ok($$select public.dt_transition_request(current_setting('dt.test_paid_delivery_id')::uuid,'accept',1)$$,'P0001','Online payments are not connected. Fixed-price requests cannot be accepted yet.','fixed-price deliveries cannot confirm without verified payments');
-insert into dt_test_results select ok((select status='PENDING_CREATOR' and version=1 and accepted_at is null and delivery_due_at is null and reserved_from is null from public.dt_requests where id=current_setting('dt.test_paid_delivery_id')::uuid),'blocked paid delivery has no deadline or reservation');
+insert into dt_test_results select lives_ok($$select public.dt_transition_request(current_setting('dt.test_paid_delivery_id')::uuid,'accept',1)$$,'external deliverable can be accepted');
+insert into dt_test_results select ok((select status='CONFIRMED' and version=2 and accepted_at is not null and delivery_due_at is not null and reserved_from is null from public.dt_requests where id=current_setting('dt.test_paid_delivery_id')::uuid),'accepted delivery has a deadline without an appointment reservation');
 select public.dt_save_page(jsonb_set(pg_temp.document(),'{services,4,kind}','"enquiry"'),16);
 select public.dt_publish_page(true,17);
 reset role;
@@ -505,8 +510,8 @@ select set_config('dt.test_paid_enquiry_id',public.dt_submit_request(
 reset role;
 select pg_temp.login(1);
 set local role authenticated;
-insert into dt_test_results select throws_ok($$select public.dt_transition_request(current_setting('dt.test_paid_enquiry_id')::uuid,'accept',1)$$,'P0001','Online payments are not connected. Fixed-price requests cannot be accepted yet.','fixed-price enquiries cannot bypass the payment guard');
-insert into dt_test_results select ok((select status='PENDING_CREATOR' and version=1 and accepted_at is null and reserved_from is null from public.dt_requests where id=current_setting('dt.test_paid_enquiry_id')::uuid),'blocked paid enquiry remains pending');
+insert into dt_test_results select lives_ok($$select public.dt_transition_request(current_setting('dt.test_paid_enquiry_id')::uuid,'accept',1)$$,'external enquiry can be accepted');
+insert into dt_test_results select ok((select status='CONFIRMED' and version=2 and accepted_at is not null and reserved_from is null from public.dt_requests where id=current_setting('dt.test_paid_enquiry_id')::uuid),'accepted enquiry does not occupy an appointment slot');
 reset role;
 insert into dt_test_results select ok(not has_function_privilege('anon','dt_private.guard_unconfigured_payment()','EXECUTE'),'anonymous callers cannot execute the payment trigger');
 insert into dt_test_results select ok(not has_function_privilege('authenticated','dt_private.guard_unconfigured_payment()','EXECUTE'),'authenticated callers cannot execute the payment trigger directly');

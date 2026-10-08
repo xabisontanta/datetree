@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { provisionPrivateCreatorProfile } from '@/features/creators/provision-private-profile';
 import { hasSupabasePublicConfig } from '@/lib/supabase/config';
 import { createClient } from '@/lib/supabase/server';
+import { safeAuthDestination } from '@/features/creators/auth-destination';
 
 const otpTypes = new Set<EmailOtpType>([
   'email',
@@ -14,20 +15,19 @@ const otpTypes = new Set<EmailOtpType>([
   'email_change',
 ]);
 
-function safeNextPath(value: string | null) {
-  return value?.startsWith('/') && !value.startsWith('//') && !value.includes('\\')
-    ? value
-    : '/dashboard';
-}
-
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const next = safeNextPath(url.searchParams.get('next'));
+  const next = safeAuthDestination(url.searchParams.get('next'));
+  const failure = (reason: string) =>
+    NextResponse.redirect(
+      new URL(
+        `/auth/error?reason=${reason}&next=${encodeURIComponent(next)}`,
+        url.origin,
+      ),
+    );
 
   if (!hasSupabasePublicConfig()) {
-    return NextResponse.redirect(
-      new URL('/auth/error?reason=configuration', url.origin),
-    );
+    return failure('configuration');
   }
 
   const supabase = await createClient();
@@ -44,26 +44,25 @@ export async function GET(request: Request) {
       type: rawType as EmailOtpType,
     }));
   } else {
-    return NextResponse.redirect(new URL('/auth/error?reason=invalid', url.origin));
+    return failure('invalid');
   }
 
   if (authError) {
-    return NextResponse.redirect(new URL('/auth/error?reason=expired', url.origin));
+    return failure('expired');
   }
 
   const { data, error: userError } = await supabase.auth.getUser();
 
   if (userError || !data.user) {
-    return NextResponse.redirect(new URL('/auth/error?reason=session', url.origin));
+    return failure('session');
   }
 
-  const { error: profileError } = await provisionPrivateCreatorProfile(
-    supabase,
-    data.user,
-  );
+  const { error: profileError } = /^\/dashboard(?:\/|\?|$)/.test(next)
+    ? await provisionPrivateCreatorProfile(supabase, data.user)
+    : { error: null };
 
   if (profileError) {
-    return NextResponse.redirect(new URL('/auth/error?reason=profile', url.origin));
+    return failure('profile');
   }
 
   return NextResponse.redirect(new URL(next, url.origin));

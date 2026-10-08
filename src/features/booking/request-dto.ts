@@ -4,7 +4,11 @@ export const REQUEST_COLUMNS =
   'id,snapshot,requester_name,notes,answers,preferred_date,start_at,end_at,visitor_timezone,status,version,created_at,accepted_at,delivery_due_at' as const;
 export const requestDtoSchema = z.object({
   id: z.uuid(),
-  snapshot: publicServiceSchema,
+  snapshot: publicServiceSchema.extend({
+    pricing: z.enum(['free', 'fixed', 'quote']).optional(),
+    amount: z.number().optional(),
+    currency: z.string().optional(),
+  }),
   requester_name: z.string(),
   notes: z.string(),
   answers: z.array(z.string()),
@@ -64,6 +68,9 @@ export function notificationStatusLabel(status: NotificationStatusDTO) {
     delivered: 'delivered',
     retry_scheduled: 'retry scheduled',
     permanent_failure: 'could not be delivered',
+    uncertain: 'awaiting delivery confirmation',
+    suppressed: 'not sent',
+    bounced: 'bounced',
   };
   return `${channel}: ${state[status.status] ?? 'status unavailable'}`;
 }
@@ -81,7 +88,7 @@ export function requestStatusLabel(r: RequestDTO) {
     CANCELLED: 'Cancelled',
     COMPLETED: 'Completed',
     EXPIRED: 'Expired',
-    ACCEPTED_AWAITING_PAYMENT: 'Awaiting payment',
+    ACCEPTED_AWAITING_PAYMENT: 'Legacy request — review privately',
   };
   return labels[r.status] ?? r.status;
 }

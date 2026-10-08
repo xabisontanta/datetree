@@ -393,6 +393,20 @@ TWILIO_CONTENT_SID_MAP = "env(TWILIO_CONTENT_SID_MAP)"
 RESEND_API_KEY = "env(RESEND_API_KEY)"
 NOTIFICATION_EMAIL_FROM = "env(NOTIFICATION_EMAIL_FROM)"
 DATE_TREE_APP_URL = "env(DATE_TREE_APP_URL)"
+DT_NOTIFICATION_WORKER_SECRET = "env(DT_NOTIFICATION_WORKER_SECRET)"
+RESEND_WEBHOOK_SECRET = "env(RESEND_WEBHOOK_SECRET)"
+TWILIO_VERIFY_SERVICE_SID = "env(TWILIO_VERIFY_SERVICE_SID)"
+DT_WHATSAPP_VERIFY_ENABLED = "env(DT_WHATSAPP_VERIFY_ENABLED)"
+
+# Custom verified identity/worker-secret auth; webhooks verify provider signatures.
+[functions.dt-notification-worker]
+verify_jwt = false
+[functions.dt-resend-webhook]
+verify_jwt = false
+[functions.dt-twilio-webhook]
+verify_jwt = false
+[functions.dt-whatsapp-verify]
+verify_jwt = false
 
 [analytics]
 enabled = true

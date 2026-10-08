@@ -36,7 +36,7 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
           />
         </div>
         <div className="field-stack">
-          <Label htmlFor="whatsappNumber">WhatsApp number</Label>
+          <Label htmlFor="whatsappNumber">WhatsApp number (optional)</Label>
           <Input
             id="whatsappNumber"
             name="whatsappNumber"
@@ -47,11 +47,12 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
             pattern={E164_PHONE_INPUT_PATTERN}
             maxLength={16}
             title="Use international format, for example +27821234567."
-            required
           />
           <p className="field-help">
-            Use international format without spaces, for example +27821234567.
-            Verification comes later.
+            Email is enough to create your page. If supplied, use international format
+            without spaces, for example +27821234567. After signup, verify your number
+            and enable WhatsApp in notification settings; this form does not activate
+            delivery.
           </p>
         </div>
         <div className="field-stack">
@@ -80,8 +81,11 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
             <span>I accept the Privacy Policy.</span>
           </label>
           <label className="consent-row" htmlFor="whatsappConsent">
-            <Checkbox id="whatsappConsent" name="whatsappConsent" required />
-            <span>I agree to receive booking notifications on WhatsApp.</span>
+            <Checkbox id="whatsappConsent" name="whatsappConsent" />
+            <span>
+              I would like WhatsApp request updates (optional). I’ll verify my number
+              and enable them in notification settings.
+            </span>
           </label>
         </div>
         <Button type="submit" size="lg" className="w-full">

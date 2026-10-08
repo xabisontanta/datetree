@@ -9,11 +9,12 @@ import {
   requestDtoSchema,
 } from '@/features/booking/request-dto';
 import { BrandMark } from '@/components/brand-mark';
+import { activitySchema, preferredContactSchema } from '@/features/booking/contact-dto';
 export const dynamic = 'force-dynamic';
 export default async function CreatorRequestsPage() {
   const db = await createClient();
   const { data: auth } = await db.auth.getUser();
-  if (!auth.user) redirect('/auth/sign-in');
+  if (!auth.user) redirect('/auth/sign-in?next=%2Fdashboard%2Frequests');
   const { data, error } = await db
     .from('dt_requests')
     .select(REQUEST_COLUMNS)
@@ -24,8 +25,11 @@ export default async function CreatorRequestsPage() {
   const { data: meetingDetails } = await db.rpc('dt_request_details');
   const { data: contactRows } = await db.rpc('dt_request_contacts');
   const { data: notificationRows } = await db.rpc('dt_notification_statuses');
+  const { data: activityRows } = await db.rpc('dt_notification_feed');
+  const activity = activitySchema.array().safeParse(activityRows);
+  const parsedContacts = preferredContactSchema.array().safeParse(contactRows);
   const contacts = Object.fromEntries(
-    (contactRows ?? []).map((d) => [d.request_id, d.email]),
+    (parsedContacts.success ? parsedContacts.data : []).map((d) => [d.request_id, d]),
   );
   const details = Object.fromEntries(
     (meetingDetails ?? []).map((d) => [d.request_id, d.details]),
@@ -62,6 +66,7 @@ export default async function CreatorRequestsPage() {
           details={details}
           contacts={contacts}
           notifications={notifications}
+          activity={activity.success ? activity.data : []}
         />
       )}
       <p className="dt-muted">Showing your latest 100 requests.</p>

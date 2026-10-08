@@ -48,9 +48,6 @@ function draft(): RequestSubmission {
       kind: 'scheduled',
       active: true,
       image: '',
-      pricing: 'free',
-      amount: 0,
-      currency: 'ZAR',
       duration: 30,
       mode: 'online',
       location: '',
@@ -67,6 +64,9 @@ function draft(): RequestSubmission {
     timezone: 'Africa/Johannesburg',
     adult: true,
     consent: true,
+    preferredContact: 'email',
+    contactSharingConsent: true,
+    whatsappNotificationConsent: false,
   };
 }
 

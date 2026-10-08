@@ -2,7 +2,7 @@
 
 ## Scope
 
-Own the visitor booking experience, minimal data collection, phone-verification coordination, screening answers, request review, payment handoff, and requester-safe booking status view. Optimize for low friction and approximately 60-second request completion.
+Own the visitor request experience, minimal data collection, phone-verification coordination, screening answers, request review, and requester-safe status view. Optimize for low friction and approximately 60-second request completion. Do not add payment handoff or public prices.
 
 Do not require creator registration to request a service. Use verified email access,
 display name, a brief, 18+ confirmation, sharing consent, and service-specific questions.
@@ -15,4 +15,4 @@ Data minimization is mandatory. Do not request home address, ID number, employer
 
 Use calculated slots from the availability service. Submit requests and state-changing actions through typed server/domain interfaces; do not mutate Supabase rows or booking status directly from UI. The server must verify requester ownership for every status read or mutation.
 
-Coordinate OTP delivery/rate limits with notifications, state transitions with booking, and Paystack handoff with payments. Treat redirects as untrusted until server verification completes. Test duplicate submission, stale slots, invalid screening input, ownership isolation, blocked requesters, and safe status projections.
+Coordinate OTP delivery/rate limits with notifications and state transitions with booking. Contact sharing and WhatsApp notification consent are separate. Verification must not create a creator profile. Treat redirects as untrusted until server verification completes. Test duplicate submission, stale slots, invalid screening input, ownership isolation, blocked requesters, and safe status projections.

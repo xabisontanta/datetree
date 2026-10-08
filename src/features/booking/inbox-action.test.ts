@@ -10,8 +10,9 @@ describe('inbox action recovery', () => {
   });
 
   it('preserves a known rejection without claiming success', async () => {
-    expect(await runInboxAction(async () => ({ error: 'This request changed.' })))
-      .toEqual({ error: 'This request changed.', refresh: false });
+    expect(
+      await runInboxAction(async () => ({ error: 'This request changed.' })),
+    ).toEqual({ error: 'This request changed.', refresh: false });
   });
 
   it('refreshes after transport loss without retrying an uncertain mutation', async () => {

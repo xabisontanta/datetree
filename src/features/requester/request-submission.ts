@@ -11,9 +11,13 @@ export function freshServiceRequestDetails(service: Pick<PublicService, 'questio
   };
 }
 
-export type RequestSubmission = Omit<RequestInput, 'adult' | 'consent'> & {
+export type RequestSubmission = Omit<
+  RequestInput,
+  'adult' | 'consent' | 'contactSharingConsent'
+> & {
   adult: boolean;
   consent: boolean;
+  contactSharingConsent: boolean;
 };
 
 /** A retry must use the same key AND data as the attempt whose result was lost. */

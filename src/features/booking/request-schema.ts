@@ -15,6 +15,9 @@ export const requestSchema = z.object({
   timezone: z.string().max(80),
   adult: z.literal(true),
   consent: z.literal(true),
+  preferredContact: z.enum(['email', 'whatsapp']),
+  contactSharingConsent: z.literal(true),
+  whatsappNotificationConsent: z.boolean(),
 });
 export type RequestInput = z.infer<typeof requestSchema>;
 export const transitionSchema = z.object({

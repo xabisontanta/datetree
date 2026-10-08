@@ -1,13 +1,16 @@
 import { z } from 'zod';
 
-export const timezoneSchema = z.string().max(80).refine((zone) => {
-  try {
-    new Intl.DateTimeFormat('en', { timeZone: zone });
-    return true;
-  } catch {
-    return false;
-  }
-}, 'Choose a valid timezone.');
+export const timezoneSchema = z
+  .string()
+  .max(80)
+  .refine((zone) => {
+    try {
+      new Intl.DateTimeFormat('en', { timeZone: zone });
+      return true;
+    } catch {
+      return false;
+    }
+  }, 'Choose a valid timezone.');
 
 export const availabilityQuerySchema = z.object({
   service: z.uuid(),

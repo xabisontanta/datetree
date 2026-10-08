@@ -105,10 +105,60 @@ describe('signIn', () => {
     ).rejects.toThrow('NEXT_REDIRECT:/dashboard');
   });
 
+  it.each([
+    '/requests',
+    '/requests/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    '/settings/notifications',
+    '/test-creator?service=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  ])('returns a requester to %s without creating a creator profile', async (next) => {
+    const client = authClient();
+    client.auth.signInWithPassword.mockResolvedValue({
+      data: { user: { id: 'requester-1' } },
+      error: null,
+    });
+    mocks.createClient.mockResolvedValue(client);
+
+    await expect(
+      signIn(formData({ email: 'fan@example.test', password: 'securepass1', next })),
+    ).rejects.toThrow(`NEXT_REDIRECT:${next}`);
+    expect(mocks.provisionProfile).not.toHaveBeenCalled();
+  });
+
+  it('preserves a creator email action intent through password sign-in', async () => {
+    const client = authClient();
+    const user = { id: 'creator-1' };
+    const next =
+      '/dashboard/requests/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa?intent=accept';
+    client.auth.signInWithPassword.mockResolvedValue({ data: { user }, error: null });
+    mocks.createClient.mockResolvedValue(client);
+
+    await expect(
+      signIn(
+        formData({ email: 'creator@example.test', password: 'securepass1', next }),
+      ),
+    ).rejects.toThrow(`NEXT_REDIRECT:${next}`);
+    expect(mocks.provisionProfile).toHaveBeenCalledWith(client, user);
+  });
+
+  it('preserves requester settings after a password validation error', async () => {
+    await expect(
+      signIn(
+        formData({
+          email: 'not-an-email',
+          password: '',
+          next: '/settings/notifications',
+        }),
+      ),
+    ).rejects.toThrow(
+      'NEXT_REDIRECT:/auth/sign-in?next=%2Fsettings%2Fnotifications&error=',
+    );
+    expect(mocks.provisionProfile).not.toHaveBeenCalled();
+  });
+
   it('does not call Supabase when validation fails', async () => {
     await expect(
       signIn(formData({ email: 'not-an-email', password: '' })),
-    ).rejects.toThrow('NEXT_REDIRECT:/auth/sign-in?error=');
+    ).rejects.toThrow('NEXT_REDIRECT:/auth/sign-in?next=%2Fdashboard&error=');
     expect(mocks.createClient).not.toHaveBeenCalled();
   });
 
@@ -163,6 +213,80 @@ describe('signIn', () => {
 });
 
 describe('signUp', () => {
+  it.each(['omitted', 'blank'])(
+    'creates an email-only account with %s optional WhatsApp fields',
+    async (input) => {
+      const client = authClient();
+      client.auth.signUp.mockResolvedValue({
+        data: { session: null, user: { id: 'creator-email-only', identities: [{}] } },
+        error: null,
+      });
+      mocks.createClient.mockResolvedValue(client);
+      const {
+        whatsappNumber: _number,
+        whatsappConsent: _consent,
+        ...essentials
+      } = validSignup;
+      const values =
+        input === 'blank'
+          ? { ...essentials, whatsappNumber: '', whatsappConsent: '' }
+          : essentials;
+      await expect(signUp(formData(values))).rejects.toThrow(
+        'Check%20your%20email%20to%20finish%20signup.',
+      );
+      expect(client.auth.signUp).toHaveBeenCalledWith(
+        expect.objectContaining({
+          options: expect.objectContaining({
+            data: {
+              whatsapp_number: null,
+              is_adult: true,
+              terms_accepted: true,
+              privacy_accepted: true,
+              whatsapp_notifications_consent: false,
+            },
+          }),
+        }),
+      );
+      expect(mocks.provisionProfile).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    { whatsappNumber: '+27656193535', whatsappConsent: 'on', expected: true },
+    { whatsappNumber: '+27656193535', whatsappConsent: '', expected: false },
+    { whatsappNumber: '', whatsappConsent: 'on', expected: false },
+  ])(
+    'records only a valid explicitly requested initial WhatsApp preference: %j',
+    async ({ whatsappNumber, whatsappConsent, expected }) => {
+      const client = authClient();
+      client.auth.signUp.mockResolvedValue({
+        data: { session: null, user: { id: 'creator-1' } },
+        error: null,
+      });
+      mocks.createClient.mockResolvedValue(client);
+      await expect(
+        signUp(formData({ ...validSignup, whatsappNumber, whatsappConsent })),
+      ).rejects.toThrow();
+      expect(client.auth.signUp.mock.calls[0]![0].options.data).toEqual({
+        whatsapp_number: whatsappNumber || null,
+        is_adult: true,
+        terms_accepted: true,
+        privacy_accepted: true,
+        whatsapp_notifications_consent: expected,
+      });
+    },
+  );
+
+  it('does not create an account with a malformed supplied phone or missing mandatory consent', async () => {
+    await expect(
+      signUp(formData({ ...validSignup, whatsappNumber: '27656193535' })),
+    ).rejects.toThrow('Use%20international%20format');
+    await expect(
+      signUp(formData({ ...validSignup, acceptsPrivacy: '' })),
+    ).rejects.toThrow('Accept%20the%20Privacy%20Policy');
+    expect(mocks.createClient).not.toHaveBeenCalled();
+  });
+
   it('sends normalized data and the production callback to Supabase', async () => {
     const client = authClient();
     client.auth.signUp.mockResolvedValue({
@@ -243,9 +367,119 @@ describe('password recovery', () => {
       'creator@example.test',
       {
         redirectTo:
-          'https://date-tree.example/auth/callback?next=/auth/update-password',
+          'https://date-tree.example/auth/callback?next=%2Fauth%2Fupdate-password%3Fnext%3D%252Fdashboard',
       },
     );
+  });
+
+  it.each([
+    '/dashboard/requests/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa?intent=decline',
+    '/requests/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    '/settings/notifications',
+  ])('preserves %s through the recovery email and reauthentication', async (next) => {
+    const client = authClient();
+    client.auth.resetPasswordForEmail.mockResolvedValue({ error: null });
+    client.auth.getUser.mockResolvedValue({
+      data: { user: { id: 'account-1' } },
+      error: null,
+    });
+    client.auth.updateUser.mockResolvedValue({ error: null });
+    client.auth.signOut.mockResolvedValue({ error: null });
+    mocks.createClient.mockResolvedValue(client);
+
+    await expect(
+      requestPasswordReset(formData({ email: 'fan@example.test', next })),
+    ).rejects.toThrow('If%20an%20account%20exists');
+    const callback = new URL(
+      client.auth.resetPasswordForEmail.mock.calls[0]![1].redirectTo,
+    );
+    const recovery = new URL(callback.searchParams.get('next')!, callback.origin);
+    expect(recovery.pathname).toBe('/auth/update-password');
+    expect(recovery.searchParams.get('next')).toBe(next);
+    const confirmation = new URL(mocks.redirect.mock.calls.at(-1)![0], callback.origin);
+    expect(confirmation.searchParams.get('next')).toBe(next);
+
+    await expect(
+      updatePassword(
+        formData({
+          password: 'new-password1',
+          passwordConfirmation: 'new-password1',
+          next: recovery.searchParams.get('next')!,
+        }),
+      ),
+    ).rejects.toThrow('Password%20updated.');
+    const signInDestination = new URL(
+      mocks.redirect.mock.calls.at(-1)![0],
+      callback.origin,
+    );
+    expect(signInDestination.pathname).toBe('/auth/sign-in');
+    expect(signInDestination.searchParams.get('next')).toBe(next);
+    expect(client.auth.signOut).toHaveBeenCalledWith({ scope: 'global' });
+    expect(mocks.provisionProfile).not.toHaveBeenCalled();
+  });
+
+  it('does not carry an external destination into a recovery email', async () => {
+    const client = authClient();
+    client.auth.resetPasswordForEmail.mockResolvedValue({ error: null });
+    mocks.createClient.mockResolvedValue(client);
+
+    await expect(
+      requestPasswordReset(
+        formData({
+          email: 'fan@example.test',
+          next: '//attacker.test/private',
+        }),
+      ),
+    ).rejects.toThrow('If%20an%20account%20exists');
+    const callback = new URL(
+      client.auth.resetPasswordForEmail.mock.calls[0]![1].redirectTo,
+    );
+    const recovery = new URL(callback.searchParams.get('next')!, callback.origin);
+    expect(recovery.origin).toBe('https://date-tree.example');
+    expect(recovery.searchParams.get('next')).toBe('/dashboard');
+  });
+
+  it('preserves the destination when a recovery form is invalid', async () => {
+    await expect(
+      updatePassword(
+        formData({
+          password: 'new-password1',
+          passwordConfirmation: 'different-password1',
+          next: '/settings/notifications',
+        }),
+      ),
+    ).rejects.toThrow('Passwords%20do%20not%20match.');
+    const destination = new URL(
+      mocks.redirect.mock.calls.at(-1)![0],
+      'https://date-tree.example',
+    );
+    expect(destination.pathname).toBe('/auth/update-password');
+    expect(destination.searchParams.get('next')).toBe('/settings/notifications');
+    expect(mocks.createClient).not.toHaveBeenCalled();
+  });
+
+  it('preserves the destination when the recovery session expires', async () => {
+    const client = authClient();
+    client.auth.getUser.mockResolvedValue({ data: { user: null }, error: null });
+    mocks.createClient.mockResolvedValue(client);
+    const next = '/requests/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+    await expect(
+      updatePassword(
+        formData({
+          password: 'new-password1',
+          passwordConfirmation: 'new-password1',
+          next,
+        }),
+      ),
+    ).rejects.toThrow('Your%20reset%20link%20is%20invalid%20or%20expired.');
+    const destination = new URL(
+      mocks.redirect.mock.calls.at(-1)![0],
+      'https://date-tree.example',
+    );
+    expect(destination.pathname).toBe('/auth/forgot-password');
+    expect(destination.searchParams.get('next')).toBe(next);
+    expect(client.auth.updateUser).not.toHaveBeenCalled();
   });
 
   it('uses the same non-enumerating response for an unknown email', async () => {

@@ -25,6 +25,54 @@ describe('creator authentication validation', () => {
     expect(signUpSchema.safeParse(validSignUp).success).toBe(true);
   });
 
+  it.each(['', null, undefined])(
+    'supports email-only signup with optional phone %j',
+    (whatsappNumber) => {
+      const result = signUpSchema.parse({
+        ...validSignUp,
+        whatsappNumber,
+        whatsappConsent: null,
+      });
+      expect(result.whatsappNumber).toBe('');
+      expect(result.whatsappConsent).toBe(false);
+    },
+  );
+
+  it('supports omitted optional fields without weakening the essential consents', () => {
+    const {
+      whatsappNumber: _number,
+      whatsappConsent: _consent,
+      ...emailOnly
+    } = validSignUp;
+    expect(signUpSchema.parse(emailOnly)).toMatchObject({
+      whatsappNumber: '',
+      whatsappConsent: false,
+    });
+    for (const field of ['isAdult', 'acceptsTerms', 'acceptsPrivacy'] as const) {
+      expect(signUpSchema.safeParse({ ...emailOnly, [field]: null }).success).toBe(
+        false,
+      );
+    }
+  });
+
+  it.each(['on', '', null, undefined])(
+    'accepts the explicit or unchecked optional WhatsApp preference %j',
+    (whatsappConsent) => {
+      expect(
+        signUpSchema.parse({ ...validSignUp, whatsappConsent }).whatsappConsent,
+      ).toBe(whatsappConsent === 'on');
+    },
+  );
+
+  it.each(['27656193535', '+27 65 619 3535', 'invalid', '+0123456789'])(
+    'still rejects a supplied invalid optional number %s',
+    (whatsappNumber) => {
+      expect(signUpSchema.safeParse({ ...validSignUp, whatsappNumber }).success).toBe(
+        false,
+      );
+    },
+  );
+
   it('uses a browser-safe pattern with the same E.164 rules', () => {
     const browserPattern = new RegExp(`^(?:${E164_PHONE_INPUT_PATTERN})$`);
 

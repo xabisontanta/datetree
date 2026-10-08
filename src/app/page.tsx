@@ -16,9 +16,9 @@ import Link from 'next/link';
 import { BrandMark } from '@/components/brand-mark';
 
 const experiences = [
-  { icon: Coffee, title: 'Coaching session', meta: '60 min', price: 'R250' },
-  { icon: Video, title: 'Birthday shout-out', meta: '7-day delivery', price: 'R100' },
-  { icon: Phone, title: 'Project enquiry', meta: 'Your brief', price: 'Quote' },
+  { icon: Coffee, title: 'Coaching session', meta: '60 min' },
+  { icon: Video, title: 'Birthday shout-out', meta: '7-day delivery' },
+  { icon: Phone, title: 'Project enquiry', meta: 'Your brief' },
 ];
 
 const steps = [
@@ -92,7 +92,7 @@ export default function Home() {
               <Check aria-hidden="true" /> You approve every request
             </li>
             <li>
-              <Check aria-hidden="true" /> Free to start
+              <Check aria-hidden="true" /> Arrangements stay private
             </li>
           </ul>
         </div>
@@ -127,7 +127,7 @@ export default function Home() {
                 Coaching, creative projects and a little birthday magic ✨
               </p>
               <div className="experience-list">
-                {experiences.map(({ icon: Icon, title, meta, price }) => (
+                {experiences.map(({ icon: Icon, title, meta }) => (
                   <div className="experience-card" key={title}>
                     <span className="experience-icon">
                       <Icon aria-hidden="true" />
@@ -138,7 +138,6 @@ export default function Home() {
                         <Clock3 aria-hidden="true" /> {meta}
                       </span>
                     </span>
-                    <strong className="experience-price">{price}</strong>
                   </div>
                 ))}
               </div>
@@ -160,7 +159,7 @@ export default function Home() {
       <section className="signal-strip" aria-label="Core product values">
         <span>Built for social bios</span>
         <span aria-hidden="true">✦</span>
-        <span>Consent before payment</span>
+        <span>Your requests, your choice</span>
         <span aria-hidden="true">✦</span>
         <span>Mobile from the first tap</span>
       </section>

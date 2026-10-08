@@ -27,7 +27,7 @@ Name TypeScript tests `*.test.ts` and database tests `*.test.sql`. Add tests for
 
 ## Security & Product Boundaries
 
-Never expose creator contact details, booking data, calendars, payout data, or provider secrets. Consent must precede payment. Do not add discovery feeds, matching, swiping, or public calendar data. Browser code may use only Supabase publishable configuration.
+Never expose creator contact details, booking data, calendars, payout data, or provider secrets. Share only the requester's selected verified contact with explicit consent. Date Tree coordinates requests, not payments; never add prices or mark requests paid. Do not add discovery feeds, matching, swiping, or public calendar data. Browser code may use only Supabase publishable configuration. See `docs/request-notifications.md` for channel activation and delivery safety.
 
 ## Commit & Pull Request Guidelines
 

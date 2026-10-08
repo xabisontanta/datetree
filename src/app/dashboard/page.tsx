@@ -58,6 +58,9 @@ export default async function DashboardPage() {
         <Link className="dt-text-button" href="/dashboard/requests">
           Client requests
         </Link>
+        <Link className="dt-text-button" href="/settings/notifications">
+          Notifications
+        </Link>
         <form action={signOut}>
           <Button type="submit" variant="secondary" size="sm">
             Sign out

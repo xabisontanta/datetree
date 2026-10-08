@@ -144,51 +144,10 @@ export function ServiceEditor({
               maxLength={1000}
               onChange={(e) => patch(i, { description: e.target.value })}
             />
-            <div className="dt-row">
-              <Select
-                label="Pricing"
-                value={s.pricing}
-                onChange={(e) =>
-                  patch(i, { pricing: e.target.value as Service['pricing'] })
-                }
-              >
-                <option value="free">Free</option>
-                <option value="fixed">Fixed price</option>
-                {s.kind === 'enquiry' && <option value="quote">Request a quote</option>}
-              </Select>
-              {s.pricing === 'fixed' && (
-                <>
-                  <Field
-                    label="Price"
-                    type="number"
-                    min="0.01"
-                    step="0.01"
-                    value={s.amount / 100}
-                    onChange={(e) =>
-                      patch(i, { amount: Math.round(Number(e.target.value) * 100) })
-                    }
-                  />
-                  <Select
-                    label="Currency"
-                    value={s.currency}
-                    onChange={(e) =>
-                      patch(i, { currency: e.target.value as Service['currency'] })
-                    }
-                  >
-                    {['ZAR', 'USD', 'GBP', 'EUR'].map((c) => (
-                      <option key={c}>{c}</option>
-                    ))}
-                  </Select>
-                </>
-              )}
-            </div>
-            {s.pricing === 'fixed' && (
-              <p className="dt-notice">
-                You can show prices and receive requests. Acceptance is disabled until
-                verified online payments are connected. Use free services or quote
-                enquiries for now.
-              </p>
-            )}
+            <p className="dt-muted">
+              Date Tree coordinates requests, not payments. Discuss any fees privately
+              with your client.
+            </p>
             {s.kind === 'scheduled' && (
               <>
                 <div className="dt-row">

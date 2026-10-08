@@ -66,7 +66,9 @@ export function PageBuilder({
     try {
       result = await savePage(next, revision);
     } catch {
-      setError('Could not reach Date Tree. Your edits are still here. Please retry saving.');
+      setError(
+        'Could not reach Date Tree. Your edits are still here. Please retry saving.',
+      );
       return null;
     }
     if (result.error) {
@@ -215,11 +217,15 @@ export function PageBuilder({
                         const result = await publishPage(true, rev);
                         if (result.error) setError(result.error);
                         else {
-                          setMessage('Your page is published. Copy your link below and share it.');
+                          setMessage(
+                            'Your page is published. Copy your link below and share it.',
+                          );
                           router.refresh();
                         }
                       } catch {
-                        setError('Your draft is saved, but publication could not be checked. Retry publishing.');
+                        setError(
+                          'Your draft is saved, but publication could not be checked. Retry publishing.',
+                        );
                       }
                     })
                   }

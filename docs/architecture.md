@@ -1,77 +1,88 @@
 # Architecture
 
-## System Shape
+## System shape and ownership
 
-The application uses Vinext's Next-compatible App Router and React with strict
-TypeScript and Tailwind CSS. Supabase Zap provides PostgreSQL, Auth, Storage, and RLS.
-Sites deploys the production Cloudflare Worker. Payment and notification providers
-remain behind service boundaries; see `service-pages.md` for connected capabilities.
+Vinext's Next-compatible App Router, React, strict TypeScript and Tailwind provide
+the mobile-first UI. The existing Supabase Zap project supplies PostgreSQL, Auth,
+Storage and RLS. Sites hosts the production Cloudflare Worker. Resend and Twilio
+are notification adapters, not authorities for request status.
 
-```text
-Next.js UI
-    |
-    v
-Route/application boundary (validation + authorization)
-    |
-    v
-Domain services (booking, creators, requester, admin)
-    |
-    v
-Infrastructure services (availability, payments, notifications, repositories)
-    |
-    v
-Supabase/PostgreSQL, Paystack, Twilio
-```
-
-Dependencies point downward. Infrastructure adapters implement typed domain-facing interfaces; external providers never become the source of business policy.
-
-## Ownership
+Dependencies flow from UI to application validation/authorization, then domain
+rules and infrastructure. Routes/server actions live in `src/app/`, feature rules
+in `src/features/`, provider adapters in `src/services/notifications/`, and Supabase
+clients/types in `src/lib/supabase/`. Read the nearest `AGENTS.md` before changes.
 
 | Area | Owns | Must not own |
 | --- | --- | --- |
-| Frontend | Rendering, interaction, accessibility | Authorization, booking transitions, payment verification |
-| Booking | Lifecycle and transition rules | Provider signatures or message delivery |
-| Availability | Safe slot calculation and conflict input | Public calendar event disclosure |
-| Payments | Paystack verification and payment records | Booking-rule bypass |
-| Notifications | Twilio delivery and retries | Booking/payment status |
-| Supabase | Persistence, RLS, constraints, transactions | UI and provider-specific policy |
-| Admin | Moderation workflows and audit intent | Unrestricted database access |
+| UI | Rendering, interaction, accessibility | Authorization or authoritative state transitions |
+| Requests | Actor/version checks, lifecycle and service-specific acceptance | Provider signatures or delivery status |
+| Availability | Safe slots, buffers and conflict checks | Public calendar contents |
+| Notifications | Templates, delivery leases, retries and signed callbacks | Request acceptance or inbox read state |
+| Supabase | Persistence, RLS, constraints and atomic request/event/outbox writes | Public serialization or provider policy |
 
-See the nearest `AGENTS.md` for each directory's detailed contract.
+Date Tree coordinates requests, not payments. Retained legacy payment-related
+modules/data are outside this phase; they must not reintroduce public prices,
+checkout or paid-status transitions.
 
-## Public and Private Boundaries
+## Public and private boundaries
 
-Public routes return purpose-built DTOs containing only published creator information, published experiences, price/duration, and calculated availability. They never return raw table rows or distinguish why a time is unavailable.
+Public DTOs expose only the published profile, price-less service definitions and
+safe calculated availability. Draft changes do not affect the published snapshot.
+Never serialize raw database rows or reasons for unavailable time.
 
-Authenticated creator, requester, and admin routes must validate identity and authorization server-side. RLS provides defense in depth and direct Data API isolation. Service-role access is restricted to trusted server adapters and does not replace application authorization.
+Sensitive routes validate a live session and ownership server-side; RLS and
+column grants also protect direct Data API access. Contact/preferences and delivery
+internals live in private tables. Creator contact DTOs contain only the requester's
+selected, consented, currently verified method, not an alternate email. Only
+trusted Edge adapters use service-role credentials.
 
-## Paid Booking Sequence
+Requester email verification uses existing Auth without creator onboarding.
+Password/magic-link destinations are validated same-origin paths. Individual
+request routes preserve the exact destination through authentication; email intents
+are review-only GETs, followed by authorized versioned POST actions.
 
-1. Requester submits a validated request; booking becomes `PENDING_CREATOR` and does not reserve time.
-2. Creator accepts; booking rechecks the slot transactionally and enters `ACCEPTED_AWAITING_PAYMENT`, reserving time.
-3. Payments initializes a Paystack transaction using a server-owned reference.
-4. A signature-verified, amount-matched, idempotent webhook records payment success.
-5. Booking validates the current state and transitions atomically to `CONFIRMED`.
-6. A notification intent is recorded and Twilio delivery runs independently.
+## Service and notification sequence
 
-Free accepted bookings skip Paystack and enter `CONFIRMED`. Counter-offers remain unreserved until the requester accepts the creator's proposed slot.
+1. A verified requester submits a service-specific request and explicit contact
+   consent. Request, event and durable notification intents commit together.
+2. Best-effort dispatch attempts the receipt and creator summary after commit.
+   Both private inboxes remain the source of request status.
+3. Creator acceptance or requester counter acceptance rechecks slots/capacity under
+   creator/request locks and enters `CONFIRMED` under `external-v1`.
+4. The transaction records activity and relevant status notices. It never records
+   fees as paid; arrangements occur privately.
+5. The namespaced one-minute Supabase Cron job invokes the same Edge worker using
+   pg_net and Vault-protected authentication, independent of browser sessions.
+6. Fenced claims freeze provider payloads and deduplicate event/recipient/channel
+   sends. Signed provider callbacks update delivery only; opening request details
+   marks viewed activity read through a separate participant-authorized API.
 
-## Data and Time
+Email uses Resend HTML/plain text and a stable idempotency key. WhatsApp requires
+verified opt-in and approved Twilio utility templates; no free-form fallback is
+allowed. Bounded email retries and ambiguous WhatsApp reconciliation are described
+in [Reliable Request Notifications](request-notifications.md).
 
-Keep separate public/private projections for creators and requesters. Store authoritative timestamps in UTC and retain the relevant named timezone for display and recurrence rules. Use database constraints, locks, or exclusion semantics to prevent overlapping accepted/confirmed reservations. Use unique provider references/idempotency keys for webhook replay safety.
+## Data, time and rollout
 
-## Reliability
+Store authoritative timestamps in UTC and retain named IANA zones for display and
+availability rules. Appointment reservations use database conflict protection;
+deliverable capacity and enquiry acceptance stay separate. Legacy snapshots are
+private and immutable; public projections remove pricing without rewriting history.
 
-Commit authoritative booking/payment state before attempting notifications. Use an outbox/job boundary so provider failure is retryable without reversing business state. Make webhook consumers safe for duplicates and out-of-order delivery. Redact logs and attach a correlation identifier rather than copying sensitive payloads.
+Channel flags default OFF and require first activation timestamps. Do not replay
+historical provider-not-configured jobs. Consent revocation, address changes and
+obsolete unsent notices suppress delivery while preserving activity history.
+Keep shared Zap Auth SMTP and unrelated application resources unchanged.
 
-## Configuration and Deployment
+## Configuration and verification
 
-Dependencies and lockfiles are pinned. `npm run check` validates types, lint, Vitest,
-and the production build. `.openai/hosting.json` identifies the existing Sites project;
-publish a bundle built from the exact pushed source commit and preserve its audience.
-Keep environment names in `.env.example` without secrets. Never commit `.env.local`,
-credentials, disposable account details, or build/test output. Shared Zap resources
-belonging to other applications are out of scope.
+Dependencies/lockfiles are pinned. `npm run check` runs types, lint, Vitest and the
+production build; `npm run test:db` requires local Supabase/Docker. Release evidence
+must distinguish automated/mock checks, database checks and live browser/inbox
+delivery. A successful provider API response is not inbox delivery proof.
 
-RSC boundaries require plain serializable DTOs. In particular, `Object.groupBy`
-produces null-prototype objects that must not be passed to client components.
+`.openai/hosting.json` identifies the existing Sites project. Publish a bundle from
+the exact pushed source commit and preserve its audience. Keep secret names only
+in `.env.example`; never commit credentials, disposable accounts or test output.
+Browser code receives publishable configuration only. RSC props must be plain DTOs;
+`Object.groupBy` null-prototype results must be converted before client boundaries.

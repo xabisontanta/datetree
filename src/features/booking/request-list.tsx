@@ -3,9 +3,14 @@ import { Button } from '@/components/ui/button';
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { retryRequestNotifications, transitionRequest } from '@/app/requests/actions';
+import {
+  retryRequestNotifications,
+  transitionRequest,
+  revokeRequestContact,
+} from '@/app/requests/actions';
 import { Notice, Select } from '@/components/editor-fields';
-import { priceLabel } from '@/features/creators/page-schema';
+import Link from 'next/link';
+import { contactHref, type PreferredContactDTO, type ActivityDTO } from './contact-dto';
 import {
   latestNotificationStatusesByChannel,
   notificationStatusLabel,
@@ -22,12 +27,16 @@ export function RequestList({
   details = {},
   contacts = {},
   notifications = {},
+  activity = [],
+  detail = false,
 }: {
   requests: RequestDTO[];
   creator: boolean;
   details?: Record<string, string>;
-  contacts?: Record<string, string>;
+  contacts?: Record<string, PreferredContactDTO>;
   notifications?: Partial<Record<string, NotificationStatusDTO[]>>;
+  activity?: ActivityDTO[];
+  detail?: boolean;
 }) {
   const [filter, setFilter] = useState('all');
   const [error, setError] = useState('');
@@ -38,12 +47,14 @@ export function RequestList({
   function act(r: RequestDTO, operation: string, time?: string) {
     startTransition(async () => {
       setError('');
-      const result = await runInboxAction(() => transitionRequest({
-        id: r.id,
-        version: r.version,
-        operation,
-        ...(time ? { start: time } : {}),
-      }));
+      const result = await runInboxAction(() =>
+        transitionRequest({
+          id: r.id,
+          version: r.version,
+          operation,
+          ...(time ? { start: time } : {}),
+        }),
+      );
       setError(result.error);
       if (!result.error) {
         setCounter('');
@@ -108,8 +119,18 @@ export function RequestList({
               {creator
                 ? `Requested by ${r.requester_name}`
                 : `Requested as ${r.requester_name}`}{' '}
-              · {priceLabel(r.snapshot)}
             </p>
+            {!detail && (
+              <Link
+                className="dt-text-button"
+                href={`${creator ? '/dashboard' : ''}/requests/${r.id}`}
+              >
+                {activity.some((e) => e.request_id === r.id && e.unread)
+                  ? 'Unread activity · '
+                  : ''}
+                Open request
+              </Link>
+            )}
             {r.start_at && (
               <p>
                 <strong>
@@ -127,9 +148,12 @@ export function RequestList({
             )}
             {creator && contacts[r.id] && (
               <p>
-                Client email:{' '}
-                <a className="dt-text-button" href={`mailto:${contacts[r.id]}`}>
-                  {contacts[r.id]}
+                Preferred contact ({contacts[r.id]!.kind}):{' '}
+                <a
+                  className="dt-text-button"
+                  href={contactHref(contacts[r.id]!) ?? undefined}
+                >
+                  {contacts[r.id]!.address}
                 </a>
               </p>
             )}
@@ -153,7 +177,7 @@ export function RequestList({
             )}
             {r.snapshot.kind === 'enquiry' && (
               <p>
-                An enquiry is not an appointment or paid booking.
+                An enquiry is not an appointment. Discuss arrangements privately.
                 {r.preferred_date && ` Preferred date: ${r.preferred_date}.`}
               </p>
             )}
@@ -173,8 +197,8 @@ export function RequestList({
             {r.snapshot.pricing === 'fixed' && (
               <small>
                 {['PENDING_CREATOR', 'COUNTER_PROPOSED'].includes(r.status)
-                  ? 'Online payments are not connected. This fixed-price request cannot be accepted or confirmed yet.'
-                  : 'Date Tree has not collected or verified payment for this request. An earlier manual confirmation is not proof of payment.'}
+                  ? 'Original terms are retained privately. Acceptance confirms the service request only; arrange any fees directly. Date Tree does not process payments.'
+                  : 'Original terms are retained privately. Date Tree has not collected or verified payment.'}
               </small>
             )}
             {notifications[r.id]?.length ? (
@@ -214,10 +238,10 @@ export function RequestList({
                   variant="ghost"
                   type="button"
                   className="dt-button"
-                  disabled={busy || r.snapshot.pricing === 'fixed'}
+                  disabled={busy}
                   onClick={() => act(r, 'accept')}
                 >
-                  Accept request
+                  {detail ? 'Confirm acceptance' : 'Accept request'}
                 </Button>
               )}
               {creator &&
@@ -230,7 +254,7 @@ export function RequestList({
                       disabled={busy}
                       onClick={() => act(r, 'decline')}
                     >
-                      Decline
+                      {detail ? 'Confirm decline' : 'Decline'}
                     </Button>
                     {r.snapshot.kind === 'scheduled' && (
                       <Button
@@ -253,7 +277,7 @@ export function RequestList({
                   variant="ghost"
                   type="button"
                   className="dt-button"
-                  disabled={busy || r.snapshot.pricing === 'fixed'}
+                  disabled={busy}
                   onClick={() => act(r, 'accept_counter')}
                 >
                   Accept proposed time
@@ -312,6 +336,36 @@ export function RequestList({
               Reference {r.id.slice(0, 8)} · submitted{' '}
               {new Date(r.created_at).toLocaleDateString('en-ZA')}
             </small>
+            {detail && (
+              <section aria-label="Request activity" className="dt-stack">
+                <h3>Activity</h3>
+                {activity
+                  .filter((e) => e.request_id === r.id)
+                  .map((e) => (
+                    <p key={e.event_id}>
+                      {requestStatusLabel({ ...r, status: e.status })} ·{' '}
+                      {new Date(e.created_at).toLocaleString('en-ZA')}
+                    </p>
+                  ))}
+              </section>
+            )}
+            {detail && !creator && (
+              <Button
+                variant="ghost"
+                disabled={busy}
+                onClick={() =>
+                  startTransition(async () => {
+                    const result = await runInboxAction(() =>
+                      revokeRequestContact(r.id),
+                    );
+                    setError(result.error);
+                    if (result.refresh) router.refresh();
+                  })
+                }
+              >
+                Stop sharing my contact for this request
+              </Button>
+            )}
           </article>
         ))}
     </div>

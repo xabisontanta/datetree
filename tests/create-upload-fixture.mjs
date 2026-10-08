@@ -29,8 +29,13 @@ for (let y = 0; y < size; y++) {
   }
 }
 mkdirSync('work', { recursive: true });
-writeFileSync('work/qa-upload.png', Buffer.concat([
-  Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
-  chunk('IHDR', header), chunk('IDAT', deflateSync(pixels)), chunk('IEND', Buffer.alloc(0)),
-]));
+writeFileSync(
+  'work/qa-upload.png',
+  Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    chunk('IHDR', header),
+    chunk('IDAT', deflateSync(pixels)),
+    chunk('IEND', Buffer.alloc(0)),
+  ]),
+);
 console.log('Generated work/qa-upload.png (synthetic 256 × 256 PNG).');

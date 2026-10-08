@@ -14,15 +14,23 @@ describe('public production configuration', () => {
 
   it.each(Object.keys(configured))('rejects missing or empty %s', (key) => {
     expect(() => assertPublicBuildConfig({ ...configured, [key]: '' })).toThrow(key);
-    expect(() => assertPublicBuildConfig({ ...configured, [key]: undefined })).toThrow(key);
+    expect(() => assertPublicBuildConfig({ ...configured, [key]: undefined })).toThrow(
+      key,
+    );
   });
 
   it('rejects unsafe URLs and server secrets without printing their values', () => {
-    expect(() => assertPublicBuildConfig({
-      ...configured, NEXT_PUBLIC_APP_URL: 'javascript:alert(1)',
-    })).toThrow('NEXT_PUBLIC_APP_URL');
-    expect(() => assertPublicBuildConfig({
-      ...configured, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'sb_secret_private',
-    })).toThrow('Use a Supabase publishable key');
+    expect(() =>
+      assertPublicBuildConfig({
+        ...configured,
+        NEXT_PUBLIC_APP_URL: 'javascript:alert(1)',
+      }),
+    ).toThrow('NEXT_PUBLIC_APP_URL');
+    expect(() =>
+      assertPublicBuildConfig({
+        ...configured,
+        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'sb_secret_private',
+      }),
+    ).toThrow('Use a Supabase publishable key');
   });
 });

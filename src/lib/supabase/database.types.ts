@@ -152,8 +152,28 @@ export type Database = {
     Functions: {
       dt_request_contacts: {
         Args: Record<string, never>;
-        Returns: { request_id: string; email: string }[];
+        Returns: { request_id: string; kind: 'email' | 'whatsapp'; address: string }[];
       };
+      dt_contact_settings: { Args: Record<string, never>; Returns: Json };
+      dt_set_contact_preferences: {
+        Args: { number: string | null; opt_in: boolean };
+        Returns: undefined;
+      };
+      dt_notification_feed: {
+        Args: { rid?: string };
+        Returns: {
+          request_id: string;
+          event_id: number;
+          status: string;
+          created_at: string;
+          unread: boolean;
+        }[];
+      };
+      dt_mark_activity_read: {
+        Args: { rid: string; through_event: number };
+        Returns: undefined;
+      };
+      dt_revoke_request_contact: { Args: { rid: string }; Returns: undefined };
       dt_request_details: {
         Args: Record<string, never>;
         Returns: { request_id: string; details: string }[];

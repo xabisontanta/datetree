@@ -4,11 +4,7 @@ import Link from 'next/link';
 import type { CSSProperties, ReactNode } from 'react';
 import { ArrowUpRight, CalendarDays, MessageCircle, Sparkles } from 'lucide-react';
 import { SocialIcon } from '@/components/social-icon';
-import {
-  priceLabel,
-  type PublicPage,
-  type PublicService,
-} from '@/features/creators/page-schema';
+import { type PublicPage, type PublicService } from '@/features/creators/page-schema';
 import { detectSocialPlatform, opensInNewTab } from '@/features/creators/social-links';
 
 export function mediaUrl(path: string) {
@@ -164,7 +160,6 @@ export function PublicPageView({
                 <p className="dt-subtle">{serviceSummary(s)}</p>
                 <p>{s.description}</p>
                 <div className="dt-service-bottom">
-                  <strong>{priceLabel(s)}</strong>
                   <Button
                     variant="ghost"
                     type="button"

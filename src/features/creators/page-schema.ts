@@ -59,9 +59,6 @@ export const publicServiceSchema = z.object({
   kind: z.enum(['scheduled', 'deliverable', 'enquiry']),
   active: z.boolean(),
   image: imagePath,
-  pricing: z.enum(['free', 'fixed', 'quote']),
-  amount: z.number().int().min(0).max(100000000),
-  currency: z.enum(['ZAR', 'USD', 'GBP', 'EUR']),
   duration: z.number().int().min(15).max(240).multipleOf(15),
   mode: z.enum(['online', 'in-person']),
   location: z.string().trim().max(100),
@@ -75,7 +72,13 @@ export const publicServiceSchema = z.object({
     .max(3),
 });
 export const serviceSchema = publicServiceSchema
-  .extend({ privateDetails: z.string().trim().max(500) })
+  .extend({
+    privateDetails: z.string().trim().max(500),
+    // Compatibility-only draft fields; never projected publicly or edited in the UI.
+    pricing: z.enum(['free', 'fixed', 'quote']),
+    amount: z.number().int().min(0).max(100000000),
+    currency: z.enum(['ZAR', 'USD', 'GBP', 'EUR']),
+  })
   .refine((s) => s.pricing !== 'fixed' || s.amount > 0, {
     path: ['amount'],
     message: 'Enter a price above zero.',
@@ -221,16 +224,6 @@ export function newService(
     questions: [],
   };
 }
-export function priceLabel(service: PublicService) {
-  return service.pricing === 'free'
-    ? 'Free'
-    : service.pricing === 'quote'
-      ? 'Request a quote'
-      : new Intl.NumberFormat('en', {
-          style: 'currency',
-          currency: service.currency,
-        }).format(service.amount / 100);
-}
 export function toPublicPage(d: PageDocument): PublicPage {
   return {
     profile: d.profile,
@@ -243,9 +236,6 @@ export function toPublicPage(d: PageDocument): PublicPage {
         kind: s.kind,
         active: s.active,
         image: s.image,
-        pricing: s.pricing,
-        amount: s.amount,
-        currency: s.currency,
         duration: s.duration,
         mode: s.mode,
         location: s.location,

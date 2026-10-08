@@ -48,16 +48,23 @@ describe('availability calendar helpers', () => {
       now,
     );
     expect(early).toEqual(late);
-    expect(early).toEqual({ today: '2026-10-20', date: '2026-11-01', month: '2026-11' });
+    expect(early).toEqual({
+      today: '2026-10-20',
+      date: '2026-11-01',
+      month: '2026-11',
+    });
   });
 
-  it.each(['', 'not-an-instant'])('uses local today without a valid selection: %s', (value) => {
-    expect(
-      restoreCalendarSelection(
-        value,
-        'Pacific/Honolulu',
-        new Date('2026-10-01T03:00:00Z'),
-      ),
-    ).toEqual({ today: '2026-09-30', date: '', month: '2026-09' });
-  });
+  it.each(['', 'not-an-instant'])(
+    'uses local today without a valid selection: %s',
+    (value) => {
+      expect(
+        restoreCalendarSelection(
+          value,
+          'Pacific/Honolulu',
+          new Date('2026-10-01T03:00:00Z'),
+        ),
+      ).toEqual({ today: '2026-09-30', date: '', month: '2026-09' });
+    },
+  );
 });

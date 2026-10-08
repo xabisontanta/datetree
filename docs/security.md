@@ -1,49 +1,90 @@
 # Security and Privacy
 
-## Security Objectives
+## Objectives and classification
 
-Protect creator contact/calendar data, requester identity and answers, private bookings, payment/payout records, authentication tokens, and provider/OAuth credentials. Default to denial, least privilege, data minimization, and auditable privileged actions.
-
-## Data Classification
+Protect creator contact/calendar data, requester identity and answers, private
+requests, legacy financial history, authentication tokens and provider credentials.
+Default to denial, least privilege, minimization and auditable privileged actions.
 
 | Class | Examples | Handling |
 | --- | --- | --- |
-| Public | Published display name, image, bio, safe theme, experiences, price/duration, calculated slots | Purpose-built read DTOs only |
-| Private | Phone/email, requester details, bookings, calendar rules/events, screening answers, settings | Owner/role authorization plus RLS |
-| Highly sensitive | Payout data, OAuth tokens, service keys, Paystack/Twilio secrets, OTPs | Server-only, minimal storage, encrypted platform facilities, never logged |
-| Audit-sensitive | Reports, moderation actions, provider errors | Restricted access, redaction, retention policy |
+| Public | Published name/images/bio/theme, price-less services, safe slots | Allowlisted DTOs only |
+| Private | Contacts, request notes/answers, calendar settings, request history | Participant/owner authorization, RLS and restricted grants |
+| Highly sensitive | Service keys, Resend/Twilio credentials, OTPs, legacy payout data | Server-only secrets; never log or expose; do not store OTPs |
+| Audit-sensitive | Moderation records, redacted delivery failures/activity | Restricted access and retention policy |
 
-The creator's real calendar is never public. Availability responses contain only UTC start/end slots and no event, participant, source, or unavailability-reason metadata.
+The creator's real calendar is never public. Availability exposes no event,
+participant, source or unavailability-reason metadata. Date Tree processes no
+payments in this phase; preserve existing private history without declaring it paid.
 
-## Authentication and Authorization
+## Authentication and database authorization
 
-- Validate sessions and ownership on the server for every sensitive read/write; UI visibility is not authorization.
-- Enforce tenant isolation with RLS and test owner/non-owner behavior.
-- Anonymous users receive only explicitly published data and safe availability.
-- Requesters access only their own bookings; creators access only their records and requests directed to them.
-- Admin authority must come from protected server/database claims, not user-editable metadata.
-- Consider token freshness/revocation for high-risk actions; JWT claims can be stale.
+- Validate a live session, ownership and operation-specific permission for each
+  sensitive read/write. UI visibility and forwarded email links are not authority.
+- Requesters access their own requests; creators access requests directed to them.
+  Email intents open review only. Final actions are authenticated POSTs using the
+  current version, transaction locks and booking-conflict protections.
+- Requester verification must not create a creator profile. Validate same-origin
+  post-login destinations; preserve existing recovery and Auth configuration.
+- Authorization must not rely on user-editable metadata. Account deletion alone
+  does not invalidate existing JWTs; sensitive RPCs validate the live Auth session.
 
-## Supabase/PostgreSQL Controls
+Enable RLS on exposed tables and minimize grants independently. Test anonymous,
+owner and non-owner Data API access, including column grants. Views must use
+`security_invoker` where supported or have access revoked. Keep privileged
+`SECURITY DEFINER` code in the private schema with a fixed safe `search_path`,
+explicit caller/ownership checks and restricted execution; exposed wrappers use
+invoker semantics. Never expose service-role credentials through `NEXT_PUBLIC_`.
 
-Enable RLS on every exposed table. Data API grants and RLS solve different layers, so minimize both. Policies must include row ownership; `TO authenticated` alone is not authorization. UPDATE requires suitable SELECT access and both `USING` and `WITH CHECK`. Use `security_invoker` for exposed views where supported or revoke access. Avoid `SECURITY DEFINER`; if essential, isolate it outside exposed schemas, restrict execution, validate callers, set a safe `search_path`, and test it.
+## Contact consent and notification privacy
 
-Use constraints and transactions for slug uniqueness, webhook idempotency, ownership integrity, and booking overlap prevention. Never expose the service-role/secret key in browser code or a `NEXT_PUBLIC_` variable.
+Derive verified email/WhatsApp server-side, not from submitted claims. Share only
+one selected verified contact with explicit request-specific consent. A creator
+must not retrieve unselected email through another RPC, table grant or notification
+payload. Working `mailto:`/WhatsApp links use the selected DTO; email Reply-To is
+set only for a consented verified email preference.
 
-## Provider and Payment Controls
+Contact sharing and WhatsApp status-notification opt-in are independent. A number
+change invalidates verification and opt-in. STOP/settings opt-out stop WhatsApp;
+request contact revocation stops future sharing. Recheck eligibility before sends.
+Keep full notes, custom answers and private meeting instructions out of messages.
 
-Keep Paystack and Twilio secrets server-side. Verify webhook signatures against the required raw request representation before parsing business fields. Validate Paystack amount, currency, reference, booking association, and current state. Treat redirects as untrusted. Never store card number, CVV, or raw card data.
+Twilio Verify uses WhatsApp with no OTP persistence/logging: 60-second resend
+cooldown, three sends/hour per account and number, and five checks per challenge.
+Keep verification usable by requesters without creator onboarding. Production
+Verify requires an owner-supplied WhatsApp Sender configured for the Verify Service.
 
-Rate-limit WhatsApp verification sends and attempts; hash or otherwise minimize verification state and never log OTPs. Notification delivery failure must be retried separately and must not undo payment or booking state.
+## Provider and worker controls
 
-## Input, Output, and Logging
+Keep provider secrets and worker authentication in secure Edge/Vault settings.
+Background dispatch requires its secret; interactive dispatch also validates the
+current session and authorized request. Separate channel kill switches default OFF.
+Activation must not replay historical setup backlog or alter shared Zap Auth SMTP.
 
-Validate all untrusted inputs with explicit schemas, constrain lengths and URLs, and reject creator-supplied scripts/styles/HTML. Return allow-listed DTOs instead of serializing database rows. Logs must redact tokens, secrets, phone numbers where feasible, OTPs, payout/card data, screening answers, and raw webhook bodies. Prefer correlation IDs and normalized error codes.
+Verify Resend/Svix against the raw body and Twilio against the exact external URL
+and all form fields using pinned SDKs. Reject invalid signatures before processing;
+deduplicate callbacks and handle reordered states. Callbacks change delivery only,
+never request status or read markers. Never blindly retry ambiguous WhatsApp sends.
+Use approved utility templates without an unrestricted Body fallback.
 
-## Required Security Tests
+Fenced leases and immutable provider payloads protect retries. Resend retries keep
+the same body/key within its 24-hour window; six total attempts bound retries.
+Provider failure cannot reverse a committed request or acceptance.
 
-Release-critical tests cover anonymous/private isolation, cross-requester and cross-creator access, admin authorization, public DTO leakage, illegal transitions, concurrent overlap prevention, blocked requesters, webhook signature/replay/spoofing, OTP limits, and notification failure independence. See [../tests/AGENTS.md](../tests/AGENTS.md).
+## Validation, logging and release gates
 
-## Policies to Finalize Before Launch
+Validate bounded inputs/URLs and reject arbitrary creator HTML/CSS/scripts. Logs
+must redact destinations, tokens, secrets, OTPs, request answers and raw webhook
+bodies. Prefer delivery/request correlation IDs and normalized error codes.
 
-Define retention/deletion, breach response, key rotation, backup/restore testing, account recovery, abuse escalation, refund approval, monitoring/alerting, dependency review, and production access procedures.
+Release-critical checks cover cross-account access, unselected-contact protection,
+number changes/revocation, OTP abuse limits, stale/repeated actions, concurrent
+acceptance, invalid/duplicate/reordered callbacks, worker crashes and expired
+leases. Actual receipt/creator-email/status delivery and browser-closed retry
+evidence are required for channel launch; mocks and sandbox/API acceptance are not
+production proof. See [Request Notifications](request-notifications.md) and
+[Test Instructions](../tests/AGENTS.md).
+
+Finalize retention/deletion, incident response, key rotation, backup/restore,
+recovery, abuse escalation, dependency review and monitoring ownership before
+broader launch. Provider terms, billing, purchases or upgrades require owner approval.

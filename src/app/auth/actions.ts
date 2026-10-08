@@ -18,13 +18,21 @@ import {
 import { provisionPrivateCreatorProfile } from '@/features/creators/provision-private-profile';
 import { hasSupabasePublicConfig } from '@/lib/supabase/config';
 import { createClient } from '@/lib/supabase/server';
+import { safeAuthDestination } from '@/features/creators/auth-destination';
 
 function firstIssueMessage(issues: Array<{ message: string }>) {
   return issues[0]?.message ?? 'Check the form and try again.';
 }
 
-function authPath(path: string, kind: 'error' | 'message', message: string) {
-  return `${path}?${kind}=${encodeURIComponent(message)}`;
+function authPath(
+  path: string,
+  kind: 'error' | 'message',
+  message: string,
+  next?: string,
+) {
+  return `${path}?${kind}=${encodeURIComponent(message)}${
+    next ? `&next=${encodeURIComponent(next)}` : ''
+  }`;
 }
 
 function getAppOrigin() {
@@ -45,6 +53,8 @@ function logAuthFailure(operation: string, error: { code?: string; status?: numb
 }
 
 export async function signIn(formData: FormData) {
+  const next = safeAuthDestination(formData.get('next'));
+  const signInPath = `/auth/sign-in?next=${encodeURIComponent(next)}&`;
   const parsed = signInSchema.safeParse({
     email: formData.get('email'),
     password: formData.get('password'),
@@ -52,7 +62,7 @@ export async function signIn(formData: FormData) {
 
   if (!parsed.success) {
     redirect(
-      authPath('/auth/sign-in', 'error', firstIssueMessage(parsed.error.issues)),
+      `${signInPath}error=${encodeURIComponent(firstIssueMessage(parsed.error.issues))}`,
     );
   }
 
@@ -62,6 +72,7 @@ export async function signIn(formData: FormData) {
         '/auth/sign-in',
         'error',
         'Authentication is not configured in this environment.',
+        next,
       ),
     );
   }
@@ -71,13 +82,12 @@ export async function signIn(formData: FormData) {
 
   if (error) {
     logAuthFailure('sign_in', error);
-    redirect(authPath('/auth/sign-in', 'error', signInFailureMessage(error)));
+    redirect(`${signInPath}error=${encodeURIComponent(signInFailureMessage(error))}`);
   }
 
-  const { error: profileError } = await provisionPrivateCreatorProfile(
-    supabase,
-    data.user,
-  );
+  const { error: profileError } = /^\/dashboard(?:\/|\?|$)/.test(next)
+    ? await provisionPrivateCreatorProfile(supabase, data.user)
+    : { error: null };
 
   if (profileError) {
     redirect(
@@ -85,11 +95,12 @@ export async function signIn(formData: FormData) {
         '/auth/sign-in',
         'error',
         'We signed you in, but could not prepare your profile. Please try again.',
+        next,
       ),
     );
   }
 
-  redirect('/dashboard');
+  redirect(next);
 }
 
 export async function signUp(formData: FormData) {
@@ -120,18 +131,20 @@ export async function signUp(formData: FormData) {
   }
 
   const supabase = await createClient();
-  const { email, password, whatsappNumber } = parsed.data;
+  const { email, password, whatsappNumber, whatsappConsent } = parsed.data;
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
       emailRedirectTo: `${getAppOrigin()}/auth/callback?next=/dashboard`,
       data: {
-        whatsapp_number: whatsappNumber,
+        whatsapp_number: whatsappNumber || null,
         is_adult: true,
         terms_accepted: true,
         privacy_accepted: true,
-        whatsapp_notifications_consent: true,
+        // This initial preference is not verification or delivery activation.
+        // The notification worker requires verified contact settings and opt-in.
+        whatsapp_notifications_consent: Boolean(whatsappNumber && whatsappConsent),
       },
     },
   });
@@ -170,6 +183,7 @@ export async function signUp(formData: FormData) {
 }
 
 export async function requestPasswordReset(formData: FormData) {
+  const next = safeAuthDestination(formData.get('next'));
   const parsed = requestPasswordResetSchema.safeParse({
     email: formData.get('email'),
   });
@@ -180,6 +194,7 @@ export async function requestPasswordReset(formData: FormData) {
         '/auth/forgot-password',
         'error',
         firstIssueMessage(parsed.error.issues),
+        next,
       ),
     );
   }
@@ -190,19 +205,26 @@ export async function requestPasswordReset(formData: FormData) {
         '/auth/forgot-password',
         'error',
         'Password recovery is not configured in this environment.',
+        next,
       ),
     );
   }
 
   const supabase = await createClient();
+  const recoveryPath = `/auth/update-password?next=${encodeURIComponent(next)}`;
   const { error } = await supabase.auth.resetPasswordForEmail(parsed.data.email, {
-    redirectTo: `${getAppOrigin()}/auth/callback?next=/auth/update-password`,
+    redirectTo: `${getAppOrigin()}/auth/callback?next=${encodeURIComponent(recoveryPath)}`,
   });
 
   if (error) {
     logAuthFailure('request_password_reset', error);
     redirect(
-      authPath('/auth/forgot-password', 'error', resetPasswordFailureMessage(error)),
+      authPath(
+        '/auth/forgot-password',
+        'error',
+        resetPasswordFailureMessage(error),
+        next,
+      ),
     );
   }
 
@@ -211,11 +233,13 @@ export async function requestPasswordReset(formData: FormData) {
       '/auth/forgot-password',
       'message',
       'If an account exists for that email, a password reset link is on its way.',
+      next,
     ),
   );
 }
 
 export async function updatePassword(formData: FormData) {
+  const next = safeAuthDestination(formData.get('next'));
   const parsed = updatePasswordSchema.safeParse({
     password: formData.get('password'),
     passwordConfirmation: formData.get('passwordConfirmation'),
@@ -227,6 +251,7 @@ export async function updatePassword(formData: FormData) {
         '/auth/update-password',
         'error',
         firstIssueMessage(parsed.error.issues),
+        next,
       ),
     );
   }
@@ -237,6 +262,7 @@ export async function updatePassword(formData: FormData) {
         '/auth/update-password',
         'error',
         'Password recovery is not configured in this environment.',
+        next,
       ),
     );
   }
@@ -251,6 +277,7 @@ export async function updatePassword(formData: FormData) {
         '/auth/forgot-password',
         'error',
         'Your reset link is invalid or expired. Request a new one.',
+        next,
       ),
     );
   }
@@ -262,7 +289,12 @@ export async function updatePassword(formData: FormData) {
   if (error) {
     logAuthFailure('update_password', error);
     redirect(
-      authPath('/auth/update-password', 'error', updatePasswordFailureMessage(error)),
+      authPath(
+        '/auth/update-password',
+        'error',
+        updatePasswordFailureMessage(error),
+        next,
+      ),
     );
   }
 
@@ -275,6 +307,7 @@ export async function updatePassword(formData: FormData) {
       '/auth/sign-in',
       'message',
       'Password updated. Sign in with your new password.',
+      next,
     ),
   );
 }

@@ -12,7 +12,7 @@ Own Next.js routes and layouts, landing and public profile pages, creator dashbo
 - Preserve keyboard navigation, visible focus, semantic controls, useful labels, and screen-reader announcements.
 - Handle slow networks, duplicate submissions, expired sessions, validation errors, and provider handoffs explicitly.
 
-The public creator profile may render display name, image, bio, safe structured theme, experiences, price, duration, and calculated available slots. It must not reveal private creator data or raw calendar information.
+The public creator profile may render display name, image, bio, safe structured theme, services, duration, and calculated available slots. Never render prices, “Free” service labels, checkout, private creator data or raw calendar information. Request detail links are authenticated review screens; GET never changes business status.
 
 ## Boundaries
 
